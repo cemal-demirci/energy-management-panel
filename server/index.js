@@ -4,6 +4,11 @@ import sql from 'mssql';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import gatewayManager from './mbus-gateway.js';
+
+// Ayrı Portal Backend'leri
+import tenantPortalRouter from './tenant-portal.js';
+import fieldWorkerRouter from './field-worker-portal.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,24 +19,45 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Portal API Route'ları
+app.use('/api/tenant', tenantPortalRouter);    // Kiracı Portalı: /api/tenant/*
+app.use('/api/field', fieldWorkerRouter);      // Saha Personeli: /api/field/*
+
+console.log('[Portal] Kiracı Portalı API aktif: /api/tenant/*');
+console.log('[Portal] Saha Personeli API aktif: /api/field/*');
+
+// M-Bus Gateway TCP Server başlat (port 5000)
+const MBUS_TCP_PORT = parseInt(process.env.MBUS_TCP_PORT) || 5000;
+gatewayManager.startServer(MBUS_TCP_PORT);
+console.log(`[M-Bus] TCP sunucu port ${MBUS_TCP_PORT}'de başlatıldı`);
+
+// Gateway event listeners
+gatewayManager.on('gateway-connected', ({ imei, ip }) => {
+  console.log(`[M-Bus] Gateway bağlandı: ${imei} (${ip})`);
+});
+
+gatewayManager.on('gateway-disconnected', ({ imei }) => {
+  console.log(`[M-Bus] Gateway bağlantısı kesildi: ${imei}`);
+});
+
+gatewayManager.on('data-received', ({ imei, response }) => {
+  console.log(`[M-Bus] Veri alındı: ${imei} - ${response.type}`);
+});
+
 // Health check endpoint for Railway
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    database: pool ? 'connected' : 'disconnected'
+    database: pool ? 'connected' : 'disconnected',
+    mbusServer: 'running',
+    connectedGateways: gatewayManager.getConnectedGateways().length
   });
 });
 
 // Zamanlanmış görevler için
 const scheduledJobs = new Map();
 const billingHistory = [];
-
-// Gateway Manager placeholder (gerçek TCP bağlantısı için)
-const gatewayManager = {
-  getConnectedGateways: () => [],
-  getGatewayStatus: () => ({ connected: false })
-};
 
 // Gemini API Key
 const GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY || 'AIzaSyBHrH4iiVSkQXsIOGpYOb97nYlih8n12CE';
@@ -1913,6 +1939,338 @@ app.get('/api/columns/:table', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ============================================
+// 🔴 CANLI M-BUS OKUMA API'leri
+// ============================================
+
+// Bağlı TCP gateway'leri listele
+app.get('/api/mbus/live/gateways', (req, res) => {
+  try {
+    const connectedGateways = gatewayManager.getConnectedGateways();
+    res.json({
+      total: connectedGateways.length,
+      gateways: connectedGateways.map(gw => ({
+        imei: gw.imei,
+        ip: gw.ip,
+        port: gw.port,
+        connected: gw.connected,
+        lastSeen: gw.lastSeen
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Gateway durumunu sorgula
+app.get('/api/mbus/live/gateway/:imei/status', (req, res) => {
+  try {
+    const { imei } = req.params;
+    const status = gatewayManager.getGatewayStatus(imei);
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tek sayaç oku (gerçek M-Bus komutu)
+app.post('/api/mbus/live/read-meter', async (req, res) => {
+  try {
+    const { imei, primaryAddress } = req.body;
+
+    if (!imei || primaryAddress === undefined) {
+      return res.status(400).json({ error: 'IMEI ve primaryAddress gerekli' });
+    }
+
+    const status = gatewayManager.getGatewayStatus(imei);
+    if (!status.connected) {
+      return res.status(400).json({ error: 'Gateway bağlı değil' });
+    }
+
+    console.log(`[M-Bus Live] Sayaç okuma başlatılıyor: ${imei}/${primaryAddress}`);
+
+    const reading = await gatewayManager.readMeter(imei, primaryAddress);
+
+    if (reading) {
+      // Veritabanına kaydet (opsiyonel)
+      if (pool) {
+        try {
+          const energyValue = reading.values.find(v => v.unit === 'kWh' || v.unit === 'Wh');
+          const volumeValue = reading.values.find(v => v.unit === 'm³' || v.unit === 'L');
+          const tempValue = reading.values.find(v => v.unit === '°C');
+
+          if (energyValue || volumeValue) {
+            await pool.request()
+              .input('primaryAddress', sql.Int, primaryAddress)
+              .input('energy', sql.Float, energyValue?.value || 0)
+              .input('volume', sql.Float, volumeValue?.value || 0)
+              .input('temp', sql.Float, tempValue?.value || 0)
+              .query(`
+                UPDATE sayaclar SET
+                  enerji = @energy,
+                  akis = @volume,
+                  sicaklik = @temp,
+                  sontarih = GETDATE(),
+                  okuma_hata = 0
+                WHERE sayacadres = @primaryAddress
+              `);
+          }
+        } catch (dbErr) {
+          console.error('[M-Bus Live] DB kayıt hatası:', dbErr.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        reading: {
+          address: reading.address,
+          timestamp: new Date().toISOString(),
+          values: reading.values
+        }
+      });
+    } else {
+      res.json({
+        success: false,
+        error: 'Okuma başarısız veya timeout'
+      });
+    }
+  } catch (err) {
+    console.error('[M-Bus Live] Hata:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Gateway'deki tüm sayaçları tarama (broadcast)
+app.post('/api/mbus/live/scan-gateway', async (req, res) => {
+  try {
+    const { imei, startAddress = 1, endAddress = 250 } = req.body;
+
+    if (!imei) {
+      return res.status(400).json({ error: 'IMEI gerekli' });
+    }
+
+    const status = gatewayManager.getGatewayStatus(imei);
+    if (!status.connected) {
+      return res.status(400).json({ error: 'Gateway bağlı değil' });
+    }
+
+    const foundMeters = [];
+
+    for (let addr = startAddress; addr <= Math.min(endAddress, 250); addr++) {
+      try {
+        const reading = await gatewayManager.readMeter(imei, addr);
+        if (reading && reading.values.length > 0) {
+          foundMeters.push({
+            address: addr,
+            values: reading.values
+          });
+        }
+      } catch (err) {
+        // Adres bulunamadı, devam et
+      }
+    }
+
+    res.json({
+      imei,
+      scannedRange: { startAddress, endAddress },
+      foundMeters,
+      totalFound: foundMeters.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Canlı okuma stream'i başlat (WebSocket benzeri polling için)
+const liveReadingSessions = new Map();
+
+app.post('/api/mbus/live/start-session', async (req, res) => {
+  try {
+    const { imei, meterAddresses, interval = 5000 } = req.body;
+
+    if (!imei || !meterAddresses || !Array.isArray(meterAddresses)) {
+      return res.status(400).json({ error: 'IMEI ve meterAddresses listesi gerekli' });
+    }
+
+    const sessionId = `live_${Date.now()}_${imei}`;
+
+    liveReadingSessions.set(sessionId, {
+      imei,
+      meterAddresses,
+      interval,
+      status: 'running',
+      startTime: new Date(),
+      readings: [],
+      lastReading: null
+    });
+
+    // Arka planda okuma döngüsü başlat
+    startLiveReadingLoop(sessionId);
+
+    res.json({
+      sessionId,
+      message: `Canlı okuma oturumu başlatıldı`,
+      meterCount: meterAddresses.length,
+      interval
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Canlı okuma döngüsü
+async function startLiveReadingLoop(sessionId) {
+  const session = liveReadingSessions.get(sessionId);
+  if (!session) return;
+
+  while (session.status === 'running' && liveReadingSessions.has(sessionId)) {
+    const status = gatewayManager.getGatewayStatus(session.imei);
+
+    if (status.connected) {
+      for (const address of session.meterAddresses) {
+        if (session.status !== 'running') break;
+
+        try {
+          const reading = await gatewayManager.readMeter(session.imei, address);
+          if (reading) {
+            const readingData = {
+              address,
+              timestamp: new Date().toISOString(),
+              values: reading.values
+            };
+            session.readings.push(readingData);
+            session.lastReading = readingData;
+
+            // Sadece son 100 okumayı tut
+            if (session.readings.length > 100) {
+              session.readings = session.readings.slice(-100);
+            }
+          }
+        } catch (err) {
+          console.error(`[Live] Okuma hatası ${address}:`, err.message);
+        }
+      }
+    }
+
+    // Belirtilen aralık kadar bekle
+    await new Promise(resolve => setTimeout(resolve, session.interval));
+  }
+}
+
+// Canlı okuma verilerini al
+app.get('/api/mbus/live/session/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { since } = req.query;
+
+    const session = liveReadingSessions.get(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Oturum bulunamadı' });
+    }
+
+    let readings = session.readings;
+
+    // Belirli zamandan sonraki okumaları filtrele
+    if (since) {
+      const sinceDate = new Date(since);
+      readings = readings.filter(r => new Date(r.timestamp) > sinceDate);
+    }
+
+    res.json({
+      sessionId,
+      status: session.status,
+      startTime: session.startTime,
+      meterAddresses: session.meterAddresses,
+      lastReading: session.lastReading,
+      readings,
+      readingCount: session.readings.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Canlı okuma oturumunu durdur
+app.post('/api/mbus/live/stop-session/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const session = liveReadingSessions.get(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Oturum bulunamadı' });
+    }
+
+    session.status = 'stopped';
+    session.endTime = new Date();
+
+    res.json({
+      sessionId,
+      message: 'Oturum durduruldu',
+      totalReadings: session.readings.length,
+      duration: (session.endTime - session.startTime) / 1000
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tüm aktif oturumları listele
+app.get('/api/mbus/live/sessions', (req, res) => {
+  try {
+    const sessions = Array.from(liveReadingSessions.entries()).map(([id, session]) => ({
+      sessionId: id,
+      imei: session.imei,
+      status: session.status,
+      meterCount: session.meterAddresses.length,
+      readingCount: session.readings.length,
+      startTime: session.startTime,
+      lastReading: session.lastReading?.timestamp
+    }));
+
+    res.json({
+      total: sessions.length,
+      active: sessions.filter(s => s.status === 'running').length,
+      sessions
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// M-Bus sayaç veri formatları (firmware yapısına göre)
+app.get('/api/mbus/data-format', (req, res) => {
+  res.json({
+    heatMeter: {
+      description: 'Ultrasonik Isı Sayacı Veri Yapısı',
+      fields: {
+        heat_high_resolution: 'Isı enerjisi (yüksek çözünürlük) - Wh/kWh',
+        cool_high_resolution: 'Soğutma enerjisi (yüksek çözünürlük) - Wh/kWh',
+        volume_high_resolution: 'Hacim (yüksek çözünürlük) - L/m³',
+        T_inlet: 'Giriş sıcaklığı (T1) - 0.01°C',
+        T_outlet: 'Çıkış sıcaklığı (T2) - 0.01°C',
+        T_diff: 'Sıcaklık farkı (ΔT) - 0.01°C',
+        volume_velosity: 'Anlık debi - L/h',
+        power: 'Anlık güç - W',
+        work_hours: 'Çalışma saati',
+        sys_flag: 'Sistem durumu bayrakları'
+      },
+      sysFlags: {
+        bat_err: 0x0001,
+        T_err: 0x0002,
+        Flow_err: 0x0004,
+        valve_open: 0x0040
+      },
+      vifCodes: {
+        '0x00-0x07': 'Enerji (Wh/kWh/MWh)',
+        '0x10-0x17': 'Hacim (m³/L)',
+        '0x58-0x5F': 'Sıcaklık (°C)',
+        '0x3E': 'Debi (L/h)',
+        '0x2E': 'Güç (W)'
+      }
+    }
+  });
 });
 
 // Static dosyalar
