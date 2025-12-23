@@ -19,7 +19,9 @@ import {
   Activity,
   UserCheck,
   UserX,
-  Building2
+  Building2,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 
 function UserManagement() {
@@ -30,40 +32,72 @@ function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('');
   const [activityLogs, setActivityLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = () => {
-    // Sample users
-    setUsers([
-      { id: 1, name: 'Ahmet Yılmaz', email: 'ahmet@enerji.com', phone: '532 123 4567', role: 'admin', status: 'active', lastLogin: '2024-12-23 09:30', sites: 12 },
-      { id: 2, name: 'Mehmet Kaya', email: 'mehmet@enerji.com', phone: '533 234 5678', role: 'operator', status: 'active', lastLogin: '2024-12-23 08:15', sites: 5 },
-      { id: 3, name: 'Ayşe Demir', email: 'ayse@enerji.com', phone: '534 345 6789', role: 'viewer', status: 'active', lastLogin: '2024-12-22 14:20', sites: 3 },
-      { id: 4, name: 'Fatma Çelik', email: 'fatma@enerji.com', phone: '535 456 7890', role: 'operator', status: 'inactive', lastLogin: '2024-12-15 11:00', sites: 8 },
-      { id: 5, name: 'Ali Öztürk', email: 'ali@enerji.com', phone: '536 567 8901', role: 'technician', status: 'active', lastLogin: '2024-12-23 07:45', sites: 15 },
-    ]);
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-    // Sample roles
-    setRoles([
-      { id: 'admin', name: 'Yönetici', description: 'Tam yetki', users: 2, color: '#EF4444', permissions: ['all'] },
-      { id: 'operator', name: 'Operatör', description: 'Okuma ve yazma', users: 5, color: '#3B82F6', permissions: ['read', 'write', 'reports'] },
-      { id: 'technician', name: 'Teknisyen', description: 'Saha işlemleri', users: 8, color: '#10B981', permissions: ['read', 'maintenance'] },
-      { id: 'viewer', name: 'İzleyici', description: 'Sadece okuma', users: 12, color: '#8B5CF6', permissions: ['read'] },
-      { id: 'billing', name: 'Muhasebe', description: 'Fatura işlemleri', users: 3, color: '#F59E0B', permissions: ['read', 'billing'] },
-    ]);
+      const [usersRes, rolesRes, logsRes] = await Promise.all([
+        fetch('/api/users'),
+        fetch('/api/roles'),
+        fetch('/api/activity-logs?limit=50')
+      ]);
 
-    // Sample activity logs
-    setActivityLogs([
-      { id: 1, user: 'Ahmet Yılmaz', action: 'Giriş yaptı', timestamp: '2024-12-23 09:30:15', ip: '192.168.1.100', type: 'login' },
-      { id: 2, user: 'Mehmet Kaya', action: 'Site A sayaç okuması', timestamp: '2024-12-23 09:25:00', ip: '192.168.1.101', type: 'read' },
-      { id: 3, user: 'Ali Öztürk', action: 'Gateway bakımı tamamlandı', timestamp: '2024-12-23 09:20:30', ip: '192.168.1.102', type: 'maintenance' },
-      { id: 4, user: 'Ayşe Demir', action: 'Rapor indirildi', timestamp: '2024-12-23 09:15:00', ip: '192.168.1.103', type: 'download' },
-      { id: 5, user: 'Ahmet Yılmaz', action: 'Yeni kullanıcı ekledi', timestamp: '2024-12-23 09:10:00', ip: '192.168.1.100', type: 'create' },
-      { id: 6, user: 'Mehmet Kaya', action: 'Fatura oluşturuldu', timestamp: '2024-12-23 09:05:00', ip: '192.168.1.101', type: 'billing' },
-      { id: 7, user: 'Fatma Çelik', action: 'Çıkış yaptı', timestamp: '2024-12-15 11:30:00', ip: '192.168.1.104', type: 'logout' },
-    ]);
+      const usersData = await safeJson(usersRes);
+      const rolesData = await safeJson(rolesRes);
+      const logsData = await safeJson(logsRes);
+
+      if (usersData) {
+        setUsers(usersData.users || usersData || []);
+      } else {
+        setUsers([
+          { id: 1, name: 'Admin User', email: 'admin@example.com', phone: '555-0001', role: 'admin', status: 'active', lastLogin: '2024-12-23 10:30' },
+          { id: 2, name: 'Operator 1', email: 'operator@example.com', phone: '555-0002', role: 'operator', status: 'active', lastLogin: '2024-12-22 14:15' }
+        ]);
+      }
+
+      if (rolesData) {
+        setRoles(rolesData.roles || rolesData || []);
+      } else {
+        setRoles([
+          { id: 'admin', name: 'Yönetici', permissions: ['all'] },
+          { id: 'operator', name: 'Operatör', permissions: ['read', 'write'] },
+          { id: 'viewer', name: 'İzleyici', permissions: ['read'] }
+        ]);
+      }
+
+      if (logsData) {
+        setActivityLogs(logsData.logs || logsData || []);
+      } else {
+        setActivityLogs([
+          { id: 1, user: 'Admin User', action: 'Giriş yaptı', timestamp: '2024-12-23 10:30', ip: '192.168.1.1' },
+          { id: 2, user: 'Operator 1', action: 'Sayaç okuması yaptı', timestamp: '2024-12-22 14:15', ip: '192.168.1.2' }
+        ]);
+      }
+
+    } catch (err) {
+      console.error('Load data error:', err);
+      setUsers([]);
+      setRoles([]);
+      setActivityLogs([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const [newUser, setNewUser] = useState({
@@ -74,18 +108,25 @@ function UserManagement() {
     sites: []
   });
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUser.name || !newUser.email) return;
 
-    setUsers([...users, {
-      id: users.length + 1,
-      ...newUser,
-      status: 'active',
-      lastLogin: '-',
-      sites: 0
-    }]);
-    setNewUser({ name: '', email: '', phone: '', role: 'viewer', sites: [] });
-    setShowAddModal(false);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser)
+      });
+
+      if (!res.ok) throw new Error('Kullanıcı eklenemedi');
+
+      await loadData(); // Listeyi yenile
+      setNewUser({ name: '', email: '', phone: '', role: 'viewer', sites: [] });
+      setShowAddModal(false);
+    } catch (err) {
+      console.error('Add user error:', err);
+      alert('Kullanıcı eklenirken hata: ' + err.message);
+    }
   };
 
   const filteredUsers = users.filter(user => {
@@ -116,6 +157,29 @@ function UserManagement() {
       default: return <Activity size={14} />;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Veriler yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={loadData}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="user-management-page">

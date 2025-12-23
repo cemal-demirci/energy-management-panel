@@ -74,6 +74,14 @@ function ManualEntry() {
     sayacMarka: ''
   });
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchSites();
   }, []);
@@ -93,30 +101,33 @@ function ManualEntry() {
   const fetchSites = async () => {
     try {
       const res = await fetch('/api/sites?limit=500');
-      const data = await res.json();
-      setSites(data);
+      const data = await safeJson(res);
+      setSites(data || []);
     } catch (err) {
       console.error('Sites fetch error:', err);
+      setSites([]);
     }
   };
 
   const fetchBuildings = async (siteId) => {
     try {
       const res = await fetch(`/api/buildings?siteId=${siteId}`);
-      const data = await res.json();
-      setBuildings(data);
+      const data = await safeJson(res);
+      setBuildings(data || []);
     } catch (err) {
       console.error('Buildings fetch error:', err);
+      setBuildings([]);
     }
   };
 
   const fetchMeters = async (buildingId) => {
     try {
       const res = await fetch(`/api/meters?buildingId=${buildingId}`);
-      const data = await res.json();
-      setMeters(data);
+      const data = await safeJson(res);
+      setMeters(data || []);
     } catch (err) {
       console.error('Meters fetch error:', err);
+      setMeters([]);
     }
   };
 
@@ -134,8 +145,27 @@ function ManualEntry() {
 
     setLoading(true);
     try {
-      // Simulate API call - in real app this would POST to backend
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await fetch('/api/readings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meterId: selectedMeter,
+          siteId: selectedSite,
+          buildingId: selectedBuilding,
+          enerji: parseFloat(readingForm.enerji) || 0,
+          hacim: parseFloat(readingForm.hacim) || 0,
+          girisSicaklik: parseFloat(readingForm.girisSicaklik) || 0,
+          cikisSicaklik: parseFloat(readingForm.cikisSicaklik) || 0,
+          tarih: readingForm.tarih,
+          notlar: readingForm.notlar
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Kayıt başarısız');
+      }
+
       showMessage('success', 'Okuma başarıyla kaydedildi');
       setReadingForm({
         meterId: '',
@@ -157,7 +187,24 @@ function ManualEntry() {
     e.preventDefault();
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await fetch('/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: siteForm.site,
+          city: siteForm.il,
+          district: siteForm.ilce,
+          address: siteForm.adres,
+          managerName: siteForm.yonetici_isim,
+          managerPhone: siteForm.yonetici_telefon
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Site oluşturulamadı');
+      }
+
       showMessage('success', 'Site başarıyla oluşturuldu');
       setSiteForm({
         site: '',
@@ -179,7 +226,23 @@ function ManualEntry() {
     e.preventDefault();
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await fetch('/api/buildings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: buildingForm.bina,
+          siteId: buildingForm.siteId,
+          gatewayImei: buildingForm.imei,
+          managerName: buildingForm.yonetici_isim,
+          managerPhone: buildingForm.yonetici_telefon
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Bina oluşturulamadı');
+      }
+
       showMessage('success', 'Bina başarıyla oluşturuldu');
       setBuildingForm({
         bina: '',
@@ -199,7 +262,25 @@ function ManualEntry() {
     e.preventDefault();
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await fetch('/api/meters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serialNumber: meterForm.secondaryno,
+          siteId: meterForm.siteId,
+          buildingId: meterForm.binaId,
+          unitNumber: meterForm.daireNo,
+          ownerName: meterForm.malikIsim,
+          meterType: meterForm.sayacTip,
+          brand: meterForm.sayacMarka
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Sayaç eklenemedi');
+      }
+
       showMessage('success', 'Sayaç başarıyla oluşturuldu');
       setMeterForm({
         secondaryno: '',

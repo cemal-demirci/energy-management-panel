@@ -27,98 +27,57 @@ function BuildingPerformance() {
   const [filterSite, setFilterSite] = useState('');
   const [sortBy, setSortBy] = useState('score');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sites, setSites] = useState([]);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
 
   useEffect(() => {
     loadBuildings();
+    loadSites();
   }, []);
 
-  const loadBuildings = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setBuildings([
-        {
-          id: 1,
-          name: 'A Blok',
-          site: 'Site A',
-          score: 92,
-          grade: 'A+',
-          energyEfficiency: 95,
-          waterEfficiency: 88,
-          carbonScore: 90,
-          trend: 'up',
-          consumption: { energy: 45000, water: 1200, gas: 800 },
-          meterCount: 48,
-          area: 3500,
-          recommendations: ['LED aydınlatma tam', 'Isı yalıtımı iyi'],
-          issues: []
-        },
-        {
-          id: 2,
-          name: 'B Blok',
-          site: 'Site A',
-          score: 85,
-          grade: 'A',
-          energyEfficiency: 82,
-          waterEfficiency: 90,
-          carbonScore: 84,
-          trend: 'up',
-          consumption: { energy: 52000, water: 1100, gas: 950 },
-          meterCount: 52,
-          area: 4000,
-          recommendations: ['Aydınlatma optimizasyonu yapılabilir'],
-          issues: ['2 sayaç bakım bekliyor']
-        },
-        {
-          id: 3,
-          name: 'C Blok',
-          site: 'Site B',
-          score: 78,
-          grade: 'B+',
-          energyEfficiency: 75,
-          waterEfficiency: 82,
-          carbonScore: 78,
-          trend: 'stable',
-          consumption: { energy: 58000, water: 1400, gas: 1100 },
-          meterCount: 60,
-          area: 4500,
-          recommendations: ['Isı yalıtımı iyileştirilebilir', 'Su tasarruf armatürleri'],
-          issues: ['Yüksek enerji tüketimi']
-        },
-        {
-          id: 4,
-          name: 'D Blok',
-          site: 'Site B',
-          score: 65,
-          grade: 'C+',
-          energyEfficiency: 62,
-          waterEfficiency: 70,
-          carbonScore: 64,
-          trend: 'down',
-          consumption: { energy: 72000, water: 1800, gas: 1400 },
-          meterCount: 55,
-          area: 4200,
-          recommendations: ['Acil ısı yalıtımı', 'Enerji denetimi', 'Su kaçağı kontrolü'],
-          issues: ['Yüksek tüketim', '3 arızalı sayaç', 'Düşük verimlilik']
-        },
-        {
-          id: 5,
-          name: 'E Blok',
-          site: 'Site C',
-          score: 88,
-          grade: 'A',
-          energyEfficiency: 90,
-          waterEfficiency: 85,
-          carbonScore: 88,
-          trend: 'up',
-          consumption: { energy: 42000, water: 1000, gas: 700 },
-          meterCount: 40,
-          area: 3000,
-          recommendations: [],
-          issues: []
-        }
-      ]);
+  const loadSites = async () => {
+    try {
+      const res = await fetch('/api/sites?limit=500');
+      const data = await safeJson(res);
+      if (data) setSites(data.sites || data || []);
+    } catch (err) {
+      console.error('Sites load error:', err);
+    }
+  };
+
+  const loadBuildings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetch('/api/buildings/performance');
+      const data = await safeJson(res);
+
+      if (data) {
+        setBuildings(data.buildings || data || []);
+      } else {
+        // Demo data
+        setBuildings([
+          { id: 1, name: 'A Blok', site: 'Merkez Site', score: 92, grade: 'A', issues: [], consumption: { energy: 45000, water: 1200 }, trend: 'up' },
+          { id: 2, name: 'B Blok', site: 'Merkez Site', score: 78, grade: 'B+', issues: ['Yalıtım sorunu'], consumption: { energy: 62000, water: 1500 }, trend: 'stable' },
+          { id: 3, name: 'C Blok', site: 'Kuzey Site', score: 65, grade: 'C', issues: ['Eski sistem', 'Bakım gerekli'], consumption: { energy: 85000, water: 2100 }, trend: 'down' }
+        ]);
+      }
+
+    } catch (err) {
+      console.error('Buildings load error:', err);
+      setBuildings([]);
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   const getGradeColor = (grade) => {
@@ -174,6 +133,20 @@ function BuildingPerformance() {
       <div className="loading-container">
         <div className="spinner"></div>
         <p>Performans verileri yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={loadBuildings}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
       </div>
     );
   }
@@ -264,9 +237,11 @@ function BuildingPerformance() {
             <label>Site</label>
             <select value={filterSite} onChange={e => setFilterSite(e.target.value)}>
               <option value="">Tümü</option>
-              <option value="Site A">Site A</option>
-              <option value="Site B">Site B</option>
-              <option value="Site C">Site C</option>
+              {sites.map(site => (
+                <option key={site.id || site.siteId} value={site.name || site.siteName}>
+                  {site.name || site.siteName}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-group">

@@ -492,19 +492,33 @@ tr:hover {
 
 .dashboard-page .quick-actions {
   background: var(--card-bg);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 1.5rem;
   border: 1px solid var(--border);
   margin-bottom: 2rem;
+  margin-top: 2rem;
 }
 
-.dashboard-page .quick-actions h3 {
-  margin-bottom: 1rem;
+.dashboard-page .quick-actions .section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard-page .quick-actions .section-header svg {
+  color: var(--primary);
+}
+
+.dashboard-page .quick-actions .section-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
 }
 
 .dashboard-page .action-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(6, 1fr);
   gap: 1rem;
 }
 
@@ -3536,6 +3550,32 @@ input:focus, select:focus, textarea:focus {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   transition: width 0.6s, height 0.6s;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Button icons - ensure they stay above pseudo-elements */
+.btn svg,
+.btn-glow svg,
+.btn > svg,
+.btn span,
+.btn-icon svg,
+.tab-btn svg,
+.tab-btn span,
+.control-btn svg,
+.filter-btn svg,
+.action-btn svg,
+button svg {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+/* Active state icon colors */
+.filter-btn.active svg,
+.action-btn.active svg,
+.control-btn.active svg {
+  color: inherit;
 }
 
 .btn-glow:hover::before {
@@ -3858,6 +3898,10 @@ select option {
   background: var(--primary);
   color: white;
   box-shadow: 0 2px 10px var(--primary-glow);
+}
+
+.tab-btn.active svg {
+  color: white;
 }
 
 .form-card {
@@ -10526,6 +10570,10 @@ select option {
   .heat-status-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .dashboard-page .action-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 1024px) {
@@ -10544,6 +10592,10 @@ select option {
   .summary-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .dashboard-page .action-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
@@ -10552,6 +10604,10 @@ select option {
   .heat-status-grid,
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-page .action-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .filter-group {
@@ -11129,6 +11185,46 @@ li {
   border-radius: 4px;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+/* TCP Warning Message */
+.tcp-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--warning);
+}
+
+.tcp-warning svg {
+  flex-shrink: 0;
+}
+
+/* Empty Gateway List */
+.empty-gateway-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.empty-gateway-list p {
+  margin: 0;
+  font-weight: 500;
+}
+
+.empty-gateway-list small {
+  font-size: 0.75rem;
+  opacity: 0.7;
 }
 
 /* Live Gateway Indicator */
@@ -14347,5 +14443,583 @@ select {
 
   .photos-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ============================================
+   GATEWAY MANAGEMENT PAGE ENHANCED STYLING
+   ============================================ */
+
+/* Status Indicator */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-indicator.online {
+  color: var(--success);
+}
+
+.status-indicator.warning {
+  color: var(--warning);
+}
+
+.status-indicator.offline {
+  color: var(--text-muted);
+}
+
+/* Error Banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.error-banner svg {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.error-banner span {
+  color: var(--danger);
+  flex: 1;
+}
+
+.error-banner button {
+  padding: 0.5rem 1rem;
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.error-banner button:hover {
+  background: #dc2626;
+}
+
+/* Gateway Status Banner */
+.gateway-status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.gateway-status-banner.warning {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.gateway-status-banner .status-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.gateway-status-banner .status-info svg {
+  color: var(--success);
+}
+
+.gateway-status-banner.warning .status-info svg {
+  color: var(--warning);
+}
+
+.gateway-status-banner .status-text h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.25rem 0;
+}
+
+.gateway-status-banner .status-text p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Button Icon Styles */
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-icon.info {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--primary);
+}
+
+.btn-icon.info:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-icon.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+
+.btn-icon.success:hover {
+  background: var(--success);
+  color: white;
+}
+
+.btn-icon.danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.btn-icon.danger:hover {
+  background: var(--danger);
+  color: white;
+}
+
+/* Info Icon Badges */
+.info-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-icon.orion {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--primary);
+}
+
+.info-icon.wimbus {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+
+.info-icon.integral {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+
+/* Gateway Header Actions */
+.gateway-page .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.gateway-page .header-actions .btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.gateway-page .header-actions .btn-primary {
+  background: var(--gradient-primary);
+  border: none;
+  color: white;
+}
+
+.gateway-page .header-actions .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+/* Search Box with Icon */
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-box svg {
+  position: absolute;
+  left: 1rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.search-box input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-box input:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+/* Add Gateway Modal */
+.add-gateway-modal .modal-content {
+  max-width: 600px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.form-grid .form-group.full-width {
+  grid-column: span 2;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-light);
+}
+
+.form-group input,
+.form-group select {
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.form-group input::placeholder {
+  color: var(--text-muted);
+}
+
+.modal-footer {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  padding: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.modal-footer .btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-footer .btn-secondary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.modal-footer .btn-secondary:hover {
+  background: var(--border);
+}
+
+.modal-footer .btn-primary {
+  background: var(--gradient-primary);
+  border: none;
+  color: white;
+}
+
+.modal-footer .btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+/* Gateway Table Name Cell */
+.gateway-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.gateway-name-cell .name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.gateway-name-cell .site {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Gateway Actions Cell */
+.gateway-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/* ============================================
+   BULK SITE ENTRY - M-BUS INTEGRATION
+   ============================================ */
+
+.bulk-site-entry-page .mbus-controls {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.mbus-controls .btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mbus-controls .btn-mbus {
+  background: var(--gradient-primary);
+  border: none;
+  color: white;
+}
+
+.mbus-controls .btn-mbus:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.mbus-controls .btn-mbus:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mbus-controls .btn-mbus.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* M-Bus Status Indicator */
+.mbus-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.mbus-status.reading {
+  color: var(--primary);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.mbus-status.success {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.mbus-status.error {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Failed Meter Row Styling */
+.meters-table tbody tr.mbus-failed {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.meters-table tbody tr.mbus-failed td {
+  border-left: 3px solid var(--danger);
+}
+
+.meters-table tbody tr.mbus-success {
+  background: rgba(16, 185, 129, 0.05);
+}
+
+/* Manual Entry Badge */
+.manual-entry-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+/* M-Bus Read Badge */
+.mbus-read-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+/* Reading Progress Bar */
+.reading-progress {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+.reading-progress .progress-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.reading-progress .progress-header span:first-child {
+  color: var(--text);
+}
+
+.reading-progress .progress-header span:last-child {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.reading-progress .progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.reading-progress .progress-bar .fill {
+  height: 100%;
+  background: var(--gradient-primary);
+  transition: width 0.3s ease;
+}
+
+/* Retry Button in Table */
+.retry-btn {
+  padding: 0.35rem 0.65rem;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--primary);
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.2s;
+}
+
+.retry-btn:hover {
+  background: var(--primary);
+  color: white;
+}
+
+/* Bulk Entry Stats Enhancement */
+.bulk-entry-container .entry-stats-bar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+.entry-stat.mbus-read {
+  color: var(--success);
+}
+
+.entry-stat.mbus-read svg {
+  color: var(--success);
+}
+
+.entry-stat.manual-entry {
+  color: var(--warning);
+}
+
+.entry-stat.manual-entry svg {
+  color: var(--warning);
+}
+
+.entry-stat.failed {
+  color: var(--danger);
+}
+
+.entry-stat.failed svg {
+  color: var(--danger);
+}
+
+/* Responsive Fixes */
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid .form-group.full-width {
+    grid-column: span 1;
+  }
+
+  .gateway-page .header-actions {
+    flex-wrap: wrap;
+  }
+
+  .mbus-controls {
+    flex-direction: column;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
   }
 }

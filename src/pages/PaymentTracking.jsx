@@ -33,30 +33,61 @@ function PaymentTracking() {
   const [filterSite, setFilterSite] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = () => {
-    // Sample invoices
-    setInvoices([
-      { id: 'INV-2024-001', tenant: 'Ahmet Yılmaz', unit: 'A Blok - Daire 5', site: 'Site A', amount: 850, dueDate: '2024-12-25', status: 'pending', issueDate: '2024-12-01', phone: '532 123 4567', email: 'ahmet@email.com' },
-      { id: 'INV-2024-002', tenant: 'Mehmet Kaya', unit: 'A Blok - Daire 12', site: 'Site A', amount: 920, dueDate: '2024-12-20', status: 'overdue', issueDate: '2024-11-20', phone: '533 234 5678', email: 'mehmet@email.com' },
-      { id: 'INV-2024-003', tenant: 'Ayşe Demir', unit: 'B Blok - Daire 3', site: 'Site A', amount: 780, dueDate: '2024-12-28', status: 'pending', issueDate: '2024-12-05', phone: '534 345 6789', email: 'ayse@email.com' },
-      { id: 'INV-2024-004', tenant: 'Fatma Çelik', unit: 'C Blok - Daire 8', site: 'Site B', amount: 1050, dueDate: '2024-12-15', status: 'paid', paidDate: '2024-12-14', issueDate: '2024-11-15', phone: '535 456 7890', email: 'fatma@email.com' },
-      { id: 'INV-2024-005', tenant: 'Ali Öztürk', unit: 'D Blok - Daire 2', site: 'Site B', amount: 680, dueDate: '2024-12-10', status: 'overdue', issueDate: '2024-11-10', phone: '536 567 8901', email: 'ali@email.com' },
-      { id: 'INV-2024-006', tenant: 'Zeynep Arslan', unit: 'A Blok - Daire 15', site: 'Site A', amount: 890, dueDate: '2024-12-30', status: 'pending', issueDate: '2024-12-10', phone: '537 678 9012', email: 'zeynep@email.com' },
-      { id: 'INV-2024-007', tenant: 'Can Yıldız', unit: 'E Blok - Daire 4', site: 'Site C', amount: 720, dueDate: '2024-12-18', status: 'paid', paidDate: '2024-12-17', issueDate: '2024-11-18', phone: '538 789 0123', email: 'can@email.com' },
-    ]);
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-    // Sample recent payments
-    setPayments([
-      { id: 1, invoiceId: 'INV-2024-004', tenant: 'Fatma Çelik', amount: 1050, date: '2024-12-14', method: 'Havale', reference: 'HVL-123456' },
-      { id: 2, invoiceId: 'INV-2024-007', tenant: 'Can Yıldız', amount: 720, date: '2024-12-17', method: 'Kredi Kartı', reference: 'CC-789012' },
-      { id: 3, invoiceId: 'INV-2024-008', tenant: 'Deniz Koç', amount: 550, date: '2024-12-16', method: 'Nakit', reference: 'CASH-001' },
-      { id: 4, invoiceId: 'INV-2024-009', tenant: 'Ece Şahin', amount: 680, date: '2024-12-15', method: 'Havale', reference: 'HVL-456789' },
-    ]);
+      const [invoicesRes, paymentsRes] = await Promise.all([
+        fetch('/api/invoices'),
+        fetch('/api/payments?limit=50')
+      ]);
+
+      const invoicesData = await safeJson(invoicesRes);
+      const paymentsData = await safeJson(paymentsRes);
+
+      if (invoicesData) {
+        setInvoices(invoicesData.invoices || invoicesData || []);
+      } else {
+        // Demo data
+        setInvoices([
+          { id: 1, invoiceNo: 'FTR-2024-001', tenant: 'Ali Yılmaz', site: 'Merkez Site', building: 'A Blok', unit: 'D5', amount: 1250, dueDate: '2024-12-15', status: 'paid', paidAt: '2024-12-10' },
+          { id: 2, invoiceNo: 'FTR-2024-002', tenant: 'Ayşe Demir', site: 'Merkez Site', building: 'B Blok', unit: 'D12', amount: 980, dueDate: '2024-12-20', status: 'pending' },
+          { id: 3, invoiceNo: 'FTR-2024-003', tenant: 'Mehmet Kaya', site: 'Kuzey Site', building: 'A Blok', unit: 'D3', amount: 1450, dueDate: '2024-12-01', status: 'overdue' }
+        ]);
+      }
+
+      if (paymentsData) {
+        setPayments(paymentsData.payments || paymentsData || []);
+      } else {
+        setPayments([
+          { id: 1, invoiceNo: 'FTR-2024-001', tenant: 'Ali Yılmaz', amount: 1250, date: '2024-12-10', method: 'Havale' },
+          { id: 2, invoiceNo: 'FTR-2024-004', tenant: 'Fatma Öz', amount: 890, date: '2024-12-08', method: 'Kredi Kartı' }
+        ]);
+      }
+
+    } catch (err) {
+      console.error('Load data error:', err);
+      setInvoices([]);
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const stats = {
@@ -97,6 +128,32 @@ function PaymentTracking() {
   const sendReminder = (invoice) => {
     alert(`${invoice.tenant} kişisine ödeme hatırlatması gönderildi.`);
   };
+
+  // Unique sites from invoices
+  const sites = [...new Set(invoices.map(inv => inv.site).filter(Boolean))];
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Veriler yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={loadData}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="payment-page">
@@ -251,9 +308,9 @@ function PaymentTracking() {
             </select>
             <select value={filterSite} onChange={e => setFilterSite(e.target.value)}>
               <option value="">Tüm Siteler</option>
-              <option value="Site A">Site A</option>
-              <option value="Site B">Site B</option>
-              <option value="Site C">Site C</option>
+              {sites.map(site => (
+                <option key={site} value={site}>{site}</option>
+              ))}
             </select>
           </div>
 

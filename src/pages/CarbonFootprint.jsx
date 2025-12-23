@@ -16,74 +16,88 @@ import {
   Target,
   BarChart3,
   PieChart,
-  Info
+  Info,
+  AlertTriangle
 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart as RechartsPie, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 function CarbonFootprint() {
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [selectedSite, setSelectedSite] = useState('all');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [data, setData] = useState(null);
+
+  // Icon mapping for achievements
+  const achievementIcons = { Leaf, Award, Target, TreeDeciduous };
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
 
   useEffect(() => {
     calculateFootprint();
   }, [selectedPeriod, selectedSite]);
 
-  const calculateFootprint = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setData({
-        totalCO2: 125.8,
-        previousCO2: 142.3,
-        change: -11.6,
-        energyCO2: 98.5,
-        waterCO2: 12.3,
-        gasCO2: 15.0,
-        treesNeeded: 6,
-        carKmEquivalent: 512,
-        householdsEquivalent: 2.8,
-        monthlyTrend: [
-          { month: 'Oca', co2: 145, target: 140 },
-          { month: 'Şub', co2: 138, target: 138 },
-          { month: 'Mar', co2: 142, target: 136 },
-          { month: 'Nis', co2: 135, target: 134 },
-          { month: 'May', co2: 128, target: 132 },
-          { month: 'Haz', co2: 132, target: 130 },
-          { month: 'Tem', co2: 140, target: 128 },
-          { month: 'Ağu', co2: 138, target: 126 },
-          { month: 'Eyl', co2: 130, target: 124 },
-          { month: 'Eki', co2: 128, target: 122 },
-          { month: 'Kas', co2: 132, target: 120 },
-          { month: 'Ara', co2: 125.8, target: 118 },
-        ],
-        bySource: [
-          { name: 'Elektrik', value: 98.5, color: '#3B82F6' },
-          { name: 'Doğalgaz', value: 15.0, color: '#F59E0B' },
-          { name: 'Su', value: 12.3, color: '#10B981' },
-        ],
-        bySite: [
-          { site: 'Site A', co2: 45.2 },
-          { site: 'Site B', co2: 32.1 },
-          { site: 'Site C', co2: 28.5 },
-          { site: 'Site D', co2: 12.0 },
-          { site: 'Diğer', co2: 8.0 },
-        ],
-        achievements: [
-          { id: 1, title: 'Yeşil Başlangıç', desc: '%5 azaltım', earned: true, icon: Leaf },
-          { id: 2, title: 'Eko Savaşçı', desc: '%10 azaltım', earned: true, icon: Award },
-          { id: 3, title: 'Karbon Nötr', desc: '%25 azaltım', earned: false, icon: Target },
-          { id: 4, title: 'Sürdürülebilir', desc: '%50 azaltım', earned: false, icon: TreeDeciduous },
-        ],
-        tips: [
-          'LED aydınlatmaya geçiş yaparak %15 enerji tasarrufu sağlayabilirsiniz.',
-          'Isıtma sistemlerini optimize ederek karbon emisyonunu %20 azaltabilirsiniz.',
-          'Yenilenebilir enerji kaynakları kullanımını artırın.',
-          'Akıllı sayaçlar ile tüketimi gerçek zamanlı izleyin.',
-        ]
+  const calculateFootprint = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        period: selectedPeriod,
+        ...(selectedSite !== 'all' && { siteId: selectedSite })
       });
+
+      const res = await fetch(`/api/carbon-footprint?${params}`);
+      const result = await safeJson(res);
+
+      if (result) {
+        const footprintData = result.data || result;
+        if (footprintData.achievements) {
+          footprintData.achievements = footprintData.achievements.map(a => ({
+            ...a,
+            icon: achievementIcons[a.iconName] || Leaf
+          }));
+        }
+        setData(footprintData);
+      } else {
+        // Demo data
+        setData({
+          totalCO2: 125.5,
+          change: -8.5,
+          treesEquivalent: 5730,
+          carsEquivalent: 27,
+          monthlyData: [
+            { month: 'Oca', value: 145 },
+            { month: 'Şub', value: 138 },
+            { month: 'Mar', value: 125 },
+            { month: 'Nis', value: 118 },
+            { month: 'May', value: 125 }
+          ],
+          breakdown: [
+            { name: 'Isıtma', value: 65, color: '#EF4444' },
+            { name: 'Elektrik', value: 25, color: '#F59E0B' },
+            { name: 'Su', value: 10, color: '#3B82F6' }
+          ],
+          achievements: [
+            { id: 1, title: 'Yeşil Bina', description: '10% emisyon azaltma', icon: Leaf, earned: true },
+            { id: 2, title: 'Enerji Tasarrufu', description: '15% enerji tasarrufu', icon: Award, earned: true },
+            { id: 3, title: 'Sıfır Atık', description: 'Hedeflenen', icon: Target, earned: false }
+          ]
+        });
+      }
+
+    } catch (err) {
+      console.error('Carbon footprint error:', err);
+      setData(null);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6'];
@@ -100,6 +114,20 @@ function CarbonFootprint() {
       <div className="loading-container">
         <div className="spinner"></div>
         <p>Karbon ayak izi hesaplanıyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={calculateFootprint}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
       </div>
     );
   }

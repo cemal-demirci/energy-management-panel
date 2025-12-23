@@ -2273,6 +2273,172 @@ app.get('/api/mbus/data-format', (req, res) => {
   });
 });
 
+// ============================================
+// 👷 TEKNİKER / WORKER API'leri
+// ============================================
+
+// Tekniker listesi
+app.get('/api/workers', async (req, res) => {
+  try {
+    // Demo veri - gerçek sistemde veritabanından gelir
+    const workers = [
+      { id: 1, name: 'Ali Öztürk', ad_soyad: 'Ali Öztürk', phone: '555-0001', telefon: '555-0001', email: 'ali@example.com', status: 'available', completedJobs: 45, tamamlanan_is: 45, rating: 4.8, currentJob: null, skills: ['sayaç', 'gateway', 'mbus'] },
+      { id: 2, name: 'Mehmet Kaya', ad_soyad: 'Mehmet Kaya', phone: '555-0002', telefon: '555-0002', email: 'mehmet@example.com', status: 'busy', completedJobs: 32, tamamlanan_is: 32, rating: 4.5, currentJob: 'İş #WO-2024-123', skills: ['sayaç', 'bakım'] },
+      { id: 3, name: 'Ahmet Yılmaz', ad_soyad: 'Ahmet Yılmaz', phone: '555-0003', telefon: '555-0003', email: 'ahmet@example.com', status: 'available', completedJobs: 28, tamamlanan_is: 28, rating: 4.7, currentJob: null, skills: ['sayaç', 'kurulum'] },
+      { id: 4, name: 'Fatma Öz', ad_soyad: 'Fatma Öz', phone: '555-0004', telefon: '555-0004', email: 'fatma@example.com', status: 'offline', completedJobs: 15, tamamlanan_is: 15, rating: 4.9, currentJob: null, skills: ['gateway', 'teknik destek'] },
+      { id: 5, name: 'Hasan Demir', ad_soyad: 'Hasan Demir', phone: '555-0005', telefon: '555-0005', email: 'hasan@example.com', status: 'available', completedJobs: 52, tamamlanan_is: 52, rating: 4.6, currentJob: null, skills: ['sayaç', 'gateway', 'mbus', 'bakım'] }
+    ];
+    res.json({ success: true, workers, total: workers.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// İş atamaları
+app.get('/api/work-assignments', async (req, res) => {
+  try {
+    const today = new Date().toLocaleDateString('tr-TR');
+    // Demo iş atamaları
+    const assignments = [
+      {
+        id: 'WO-2024-001',
+        type: 'meter_reading',
+        description: 'Aylık Sayaç Okuma',
+        site: 'GOLDEN LİFE SİTESİ 2.ETAP',
+        siteId: 1816,
+        building: 'A-B Blok',
+        address: 'Tekirdağ, Çorlu',
+        priority: 'normal',
+        status: 'assigned',
+        assignee: { id: 1, name: 'Ali Öztürk' },
+        meterCount: 192,
+        dueDate: today,
+        createdAt: new Date(Date.now() - 86400000).toISOString(),
+        notes: 'Aylık periyodik okuma'
+      },
+      {
+        id: 'WO-2024-002',
+        type: 'maintenance',
+        description: 'Gateway Bakımı',
+        site: 'MÜMİN AĞA SİTESİ',
+        siteId: 1230,
+        building: 'A-B Blok',
+        address: 'İstanbul',
+        priority: 'high',
+        status: 'in_progress',
+        assignee: { id: 2, name: 'Mehmet Kaya' },
+        meterCount: 36,
+        dueDate: today,
+        createdAt: new Date(Date.now() - 172800000).toISOString(),
+        notes: 'Gateway sinyal sorunu'
+      },
+      {
+        id: 'WO-2024-003',
+        type: 'repair',
+        description: 'Sayaç Arızası',
+        site: 'EGE NOVA SİTESİ',
+        siteId: 436,
+        building: 'C Blok',
+        address: 'İzmir',
+        priority: 'urgent',
+        status: 'pending',
+        assignee: null,
+        meterCount: 1,
+        dueDate: today,
+        createdAt: new Date().toISOString(),
+        notes: 'Sayaç veri göndermiyor - acil müdahale'
+      },
+      {
+        id: 'WO-2024-004',
+        type: 'installation',
+        description: 'Yeni Sayaç Kurulumu',
+        site: 'UYSAL PİAZZA',
+        siteId: 1719,
+        building: 'D Blok',
+        address: 'Tekirdağ',
+        priority: 'normal',
+        status: 'pending',
+        assignee: null,
+        meterCount: 5,
+        dueDate: new Date(Date.now() + 86400000).toLocaleDateString('tr-TR'),
+        createdAt: new Date().toISOString(),
+        notes: 'Yeni daireler için sayaç montajı'
+      },
+      {
+        id: 'WO-2024-005',
+        type: 'meter_reading',
+        description: 'Haftalık Kontrol Okuma',
+        site: 'NAVI TOWERS',
+        siteId: 2001,
+        building: 'A Blok',
+        address: 'Samsun, Atakum',
+        priority: 'low',
+        status: 'completed',
+        assignee: { id: 3, name: 'Ahmet Yılmaz' },
+        meterCount: 73,
+        dueDate: new Date(Date.now() - 86400000).toLocaleDateString('tr-TR'),
+        completedAt: new Date(Date.now() - 43200000).toISOString(),
+        createdAt: new Date(Date.now() - 172800000).toISOString(),
+        notes: 'Haftalık kontrol okuma tamamlandı'
+      }
+    ];
+
+    // İstatistikler
+    const stats = {
+      total: assignments.length,
+      pending: assignments.filter(a => a.status === 'pending').length,
+      assigned: assignments.filter(a => a.status === 'assigned').length,
+      inProgress: assignments.filter(a => a.status === 'in_progress').length,
+      completed: assignments.filter(a => a.status === 'completed').length
+    };
+
+    res.json({ success: true, assignments, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// İş ataması oluştur
+app.post('/api/work-assignments', async (req, res) => {
+  try {
+    const { type, siteId, description, priority, assigneeId, dueDate, notes, meters } = req.body;
+
+    const newAssignment = {
+      id: `WO-${Date.now()}`,
+      type: type || 'meter_reading',
+      siteId,
+      description,
+      priority: priority || 'normal',
+      status: assigneeId ? 'assigned' : 'pending',
+      assignee: assigneeId ? { id: assigneeId } : null,
+      dueDate,
+      notes,
+      meters: meters || [],
+      createdAt: new Date().toISOString()
+    };
+
+    res.json({ success: true, assignment: newAssignment, message: 'İş emri oluşturuldu' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// İş ataması güncelle
+app.put('/api/work-assignments/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    res.json({
+      success: true,
+      message: `İş emri ${id} güncellendi`,
+      assignment: { id, ...updates, updatedAt: new Date().toISOString() }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Static dosyalar
 app.use(express.static(join(__dirname, '..', 'dist')));
 

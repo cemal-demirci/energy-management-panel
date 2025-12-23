@@ -12,7 +12,8 @@ import {
   Download,
   RefreshCw,
   ArrowRight,
-  ChevronDown
+  ChevronDown,
+  AlertTriangle
 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Area } from 'recharts';
 
@@ -23,69 +24,89 @@ function ComparisonAnalysis() {
   const [selectedSites, setSelectedSites] = useState(['Site A', 'Site B']);
   const [dataType, setDataType] = useState('energy');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [comparisonData, setComparisonData] = useState(null);
+  const [availableSites, setAvailableSites] = useState([]);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
+  useEffect(() => {
+    loadSites();
+  }, []);
 
   useEffect(() => {
     loadComparison();
   }, [comparisonType, period1, period2, selectedSites, dataType]);
 
-  const loadComparison = () => {
-    setLoading(true);
-    setTimeout(() => {
-      if (comparisonType === 'period') {
-        setComparisonData({
-          type: 'period',
-          period1: { label: 'Kasım 2024', total: 125000, avg: 4166 },
-          period2: { label: 'Aralık 2024', total: 118500, avg: 5152 },
-          difference: -6500,
-          percentChange: -5.2,
-          trend: [
-            { day: '1', p1: 4200, p2: 5100 },
-            { day: '5', p1: 4100, p2: 5200 },
-            { day: '10', p1: 4300, p2: 5000 },
-            { day: '15', p1: 4000, p2: 5300 },
-            { day: '20', p1: 4200, p2: 5100 },
-            { day: '25', p1: 4100, p2: 5000 },
-            { day: '30', p1: 4100, p2: null },
-          ],
-          breakdown: [
-            { category: 'Isıtma', p1: 45000, p2: 52000, diff: 7000 },
-            { category: 'Aydınlatma', p1: 28000, p2: 25000, diff: -3000 },
-            { category: 'Ortak Alan', p1: 32000, p2: 28000, diff: -4000 },
-            { category: 'Diğer', p1: 20000, p2: 13500, diff: -6500 },
-          ]
-        });
+  const loadSites = async () => {
+    try {
+      const res = await fetch('/api/sites?limit=100');
+      const data = await safeJson(res);
+      if (data) {
+        const siteList = (data.sites || data || []).map(s => s.name || s.siteName || s);
+        setAvailableSites(siteList);
+        if (siteList.length > 0 && selectedSites.length === 0) {
+          setSelectedSites(siteList.slice(0, 2));
+        }
       } else {
+        setAvailableSites(['Merkez Site', 'Kuzey Site', 'Güney Site']);
+      }
+    } catch (err) {
+      console.error('Sites load error:', err);
+    }
+  };
+
+  const loadComparison = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        type: comparisonType,
+        dataType,
+        ...(comparisonType === 'period' && {
+          period1Start: period1.start,
+          period1End: period1.end,
+          period2Start: period2.start,
+          period2End: period2.end
+        }),
+        ...(comparisonType === 'site' && {
+          sites: selectedSites.join(',')
+        })
+      });
+
+      const res = await fetch(`/api/analysis/comparison?${params}`);
+      const data = await safeJson(res);
+
+      if (data) {
+        setComparisonData(data.comparison || data);
+      } else {
+        // Demo data
         setComparisonData({
-          type: 'site',
-          sites: [
-            { name: 'Site A', total: 85000, meterCount: 150, avgPerMeter: 567 },
-            { name: 'Site B', total: 62000, meterCount: 120, avgPerMeter: 517 },
-            { name: 'Site C', total: 45000, meterCount: 80, avgPerMeter: 563 },
-          ],
-          monthlyTrend: [
-            { month: 'Oca', 'Site A': 82000, 'Site B': 58000, 'Site C': 42000 },
-            { month: 'Şub', 'Site A': 78000, 'Site B': 55000, 'Site C': 40000 },
-            { month: 'Mar', 'Site A': 72000, 'Site B': 52000, 'Site C': 38000 },
-            { month: 'Nis', 'Site A': 65000, 'Site B': 48000, 'Site C': 35000 },
-            { month: 'May', 'Site A': 58000, 'Site B': 42000, 'Site C': 32000 },
-            { month: 'Haz', 'Site A': 55000, 'Site B': 40000, 'Site C': 30000 },
-            { month: 'Tem', 'Site A': 60000, 'Site B': 45000, 'Site C': 33000 },
-            { month: 'Ağu', 'Site A': 62000, 'Site B': 48000, 'Site C': 35000 },
-            { month: 'Eyl', 'Site A': 68000, 'Site B': 52000, 'Site C': 38000 },
-            { month: 'Eki', 'Site A': 75000, 'Site B': 56000, 'Site C': 40000 },
-            { month: 'Kas', 'Site A': 80000, 'Site B': 60000, 'Site C': 43000 },
-            { month: 'Ara', 'Site A': 85000, 'Site B': 62000, 'Site C': 45000 },
-          ],
-          efficiency: [
-            { name: 'Site A', score: 78, rank: 2 },
-            { name: 'Site B', score: 85, rank: 1 },
-            { name: 'Site C', score: 72, rank: 3 },
+          period1: { label: 'Kasım 2024', total: 125000, avg: 4166 },
+          period2: { label: 'Aralık 2024', total: 138000, avg: 4600 },
+          change: 10.4,
+          chartData: [
+            { name: '1. Hafta', period1: 28000, period2: 32000 },
+            { name: '2. Hafta', period1: 31000, period2: 35000 },
+            { name: '3. Hafta', period1: 33000, period2: 36000 },
+            { name: '4. Hafta', period1: 33000, period2: 35000 }
           ]
         });
       }
+
+    } catch (err) {
+      console.error('Comparison load error:', err);
+      setComparisonData(null);
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   const getChangeIcon = (value) => {
@@ -183,7 +204,7 @@ function ComparisonAnalysis() {
           <div className="filter-group">
             <label>Siteler</label>
             <div className="site-checkboxes">
-              {['Site A', 'Site B', 'Site C', 'Site D'].map(site => (
+              {availableSites.map(site => (
                 <label key={site} className="checkbox-label">
                   <input
                     type="checkbox"
@@ -216,6 +237,16 @@ function ComparisonAnalysis() {
         <div className="loading-container">
           <div className="spinner"></div>
           <p>Analiz yapılıyor...</p>
+        </div>
+      ) : error ? (
+        <div className="error-container">
+          <AlertTriangle size={48} />
+          <h3>Veri Yüklenemedi</h3>
+          <p>{error}</p>
+          <button className="btn btn-primary" onClick={loadComparison}>
+            <RefreshCw size={18} />
+            Tekrar Dene
+          </button>
         </div>
       ) : comparisonData && (
         <>

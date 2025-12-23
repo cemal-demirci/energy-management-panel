@@ -27,6 +27,14 @@ function MeterList() {
   const [selectedSite, setSelectedSite] = useState(searchParams.get('siteId') || '');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchSites();
   }, []);
@@ -38,17 +46,11 @@ function MeterList() {
   const fetchSites = async () => {
     try {
       const res = await fetch('/api/sites?limit=500');
-      const data = await res.json();
-      setSites(data);
+      const data = await safeJson(res);
+      setSites(data || []);
     } catch (err) {
       console.error('Sites error:', err);
-      // Demo sites
-      setSites([
-        { id: 1, name: 'Merkez Site', sayacSayisi: 245 },
-        { id: 2, name: 'Batı Konutları', sayacSayisi: 180 },
-        { id: 3, name: 'Doğu Rezidans', sayacSayisi: 320 },
-        { id: 4, name: 'Kuzey Park', sayacSayisi: 156 }
-      ]);
+      setSites([]);
     }
   };
 
@@ -59,48 +61,12 @@ function MeterList() {
         ? `/api/meters?siteId=${selectedSite}&limit=200`
         : '/api/meters?limit=200';
       const res = await fetch(url);
-
-      if (!res.ok) {
-        throw new Error('Sayaç verileri alınamadı');
-      }
-
-      const metersData = await res.json();
-      setMeters(metersData);
+      const metersData = await safeJson(res);
+      setMeters(metersData || []);
       setError(null);
     } catch (err) {
-      // Demo heat meter data
-      const demoMeters = [];
-      for (let i = 1; i <= 50; i++) {
-        const girisSicaklik = 68 + Math.random() * 12;
-        const cikisSicaklik = 42 + Math.random() * 12;
-        const deltaT = girisSicaklik - cikisSicaklik;
-        const debi = 80 + Math.random() * 150;
-        const guc = (debi * deltaT * 1.163) / 1000;
-
-        demoMeters.push({
-          ID: i,
-          SeriNo: `USM-${2024}${String(i).padStart(4, '0')}`,
-          DaireNo: `${Math.floor(i / 4) + 1}/${(i % 4) + 1}`,
-          BinaAdi: `Blok ${String.fromCharCode(65 + (i % 5))}`,
-          SiteAdi: ['Merkez Site', 'Batı Konutları', 'Doğu Rezidans', 'Kuzey Park'][i % 4],
-          Il: 'İstanbul',
-          Ilce: ['Kadıköy', 'Beşiktaş', 'Şişli', 'Ümraniye'][i % 4],
-          OkumaTarihi: new Date(Date.now() - Math.random() * 86400000 * 7),
-          IsitmaEnerji: Math.floor(1500 + Math.random() * 3500),
-          SogutmaEnerji: Math.floor(200 + Math.random() * 800),
-          Hacim: (25 + Math.random() * 75).toFixed(3),
-          GirisSicaklik: girisSicaklik.toFixed(1),
-          CikisSicaklik: cikisSicaklik.toFixed(1),
-          DeltaT: deltaT.toFixed(1),
-          Debi: debi.toFixed(1),
-          AnlikGuc: guc.toFixed(2),
-          Durum: Math.random() > 0.1 ? 'Aktif' : Math.random() > 0.5 ? 'Uyarı' : 'Hata',
-          BataryaDurumu: Math.floor(60 + Math.random() * 40),
-          SinyalGucu: Math.floor(50 + Math.random() * 50)
-        });
-      }
-      setMeters(demoMeters);
-      setError(null);
+      console.error('Meters error:', err);
+      setMeters([]);
     } finally {
       setLoading(false);
     }
@@ -156,6 +122,20 @@ function MeterList() {
       <div className="loading-container">
         <div className="spinner"></div>
         <p>Isı sayaçları yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={fetchMeters}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
       </div>
     );
   }

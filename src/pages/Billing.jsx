@@ -13,6 +13,14 @@ function Billing() {
   const [distributionMethod, setDistributionMethod] = useState('consumption');
   const [unitPrice, setUnitPrice] = useState('0.25');
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchSites();
   }, []);
@@ -20,10 +28,11 @@ function Billing() {
   const fetchSites = async () => {
     try {
       const res = await fetch('/api/sites?limit=500');
-      const data = await res.json();
-      setSites(data);
+      const data = await safeJson(res);
+      setSites(data || []);
     } catch (err) {
       console.error('Sites error:', err);
+      setSites([]);
     }
   };
 
@@ -41,8 +50,10 @@ function Billing() {
         })
       });
 
-      const data = await res.json();
-      setBillingData(data);
+      const data = await safeJson(res);
+      if (data) {
+        setBillingData(data);
+      }
     } catch (err) {
       console.error('Billing error:', err);
     } finally {
@@ -65,8 +76,10 @@ function Billing() {
         })
       });
 
-      const data = await res.json();
-      setDistributionData(data);
+      const data = await safeJson(res);
+      if (data) {
+        setDistributionData(data);
+      }
     } catch (err) {
       console.error('Distribution error:', err);
     } finally {

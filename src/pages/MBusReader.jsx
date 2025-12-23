@@ -10,6 +10,14 @@ function MBusReader() {
   const [loading, setLoading] = useState(false);
   const logRef = useRef(null);
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchSites();
     fetchHistory();
@@ -39,44 +47,49 @@ function MBusReader() {
   const fetchSites = async () => {
     try {
       const res = await fetch('/api/sites?limit=500');
-      const data = await res.json();
-      setSites(data);
+      const data = await safeJson(res);
+      setSites(data || []);
     } catch (err) {
       console.error('Sites error:', err);
+      setSites([]);
     }
   };
 
   const fetchBuildings = async (siteId) => {
     try {
       const res = await fetch(`/api/buildings?siteId=${siteId}`);
-      const data = await res.json();
-      setBuildings(data);
+      const data = await safeJson(res);
+      setBuildings(data || []);
     } catch (err) {
       console.error('Buildings error:', err);
+      setBuildings([]);
     }
   };
 
   const fetchHistory = async () => {
     try {
       const res = await fetch('/api/mbus/history');
-      const data = await res.json();
-      setHistory(data);
+      const data = await safeJson(res);
+      setHistory(data || []);
     } catch (err) {
       console.error('History error:', err);
+      setHistory([]);
     }
   };
 
   const fetchJobStatus = async (jobId) => {
     try {
       const res = await fetch(`/api/mbus/status/${jobId}`);
-      const data = await res.json();
-      setReadingJob(prev => ({
-        ...prev,
-        ...data
-      }));
+      const data = await safeJson(res);
+      if (data) {
+        setReadingJob(prev => ({
+          ...prev,
+          ...data
+        }));
 
-      if (data.status === 'completed') {
-        fetchHistory();
+        if (data.status === 'completed') {
+          fetchHistory();
+        }
       }
     } catch (err) {
       console.error('Status error:', err);
@@ -94,16 +107,18 @@ function MBusReader() {
         body: JSON.stringify({ siteId: parseInt(selectedSite) })
       });
 
-      const data = await res.json();
-      setReadingJob({
-        jobId: data.jobId,
-        totalMeters: data.totalMeters,
-        completedMeters: 0,
-        successCount: 0,
-        errorCount: 0,
-        status: 'running',
-        logs: []
-      });
+      const data = await safeJson(res);
+      if (data) {
+        setReadingJob({
+          jobId: data.jobId,
+          totalMeters: data.totalMeters,
+          completedMeters: 0,
+          successCount: 0,
+          errorCount: 0,
+          status: 'running',
+          logs: []
+        });
+      }
     } catch (err) {
       console.error('Start reading error:', err);
     } finally {
@@ -122,16 +137,18 @@ function MBusReader() {
         body: JSON.stringify({ buildingId: parseInt(selectedBuilding) })
       });
 
-      const data = await res.json();
-      setReadingJob({
-        jobId: data.jobId,
-        totalMeters: data.totalMeters,
-        completedMeters: 0,
-        successCount: 0,
-        errorCount: 0,
-        status: 'running',
-        logs: []
-      });
+      const data = await safeJson(res);
+      if (data) {
+        setReadingJob({
+          jobId: data.jobId,
+          totalMeters: data.totalMeters,
+          completedMeters: 0,
+          successCount: 0,
+          errorCount: 0,
+          status: 'running',
+          logs: []
+        });
+      }
     } catch (err) {
       console.error('Start reading error:', err);
     } finally {

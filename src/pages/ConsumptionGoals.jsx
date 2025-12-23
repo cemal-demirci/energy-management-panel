@@ -16,7 +16,8 @@ import {
   Award,
   Flag,
   BarChart3,
-  ArrowRight
+  ArrowRight,
+  RefreshCw
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
@@ -25,89 +26,58 @@ function ConsumptionGoals() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [activeTab, setActiveTab] = useState('active');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sites, setSites] = useState([]);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
 
   useEffect(() => {
     loadGoals();
+    loadSites();
   }, []);
 
-  const loadGoals = () => {
-    setGoals([
-      {
-        id: 1,
-        name: 'Q4 2024 Enerji Tasarrufu',
-        type: 'energy',
-        site: 'Tüm Siteler',
-        targetValue: 500000,
-        currentValue: 425000,
-        unit: 'kWh',
-        startDate: '2024-10-01',
-        endDate: '2024-12-31',
-        status: 'on_track',
-        progress: 85,
-        trend: [
-          { week: 'H1', actual: 45000, target: 42000 },
-          { week: 'H2', actual: 43000, target: 42000 },
-          { week: 'H3', actual: 40000, target: 42000 },
-          { week: 'H4', actual: 38000, target: 42000 },
-          { week: 'H5', actual: 35000, target: 42000 },
-          { week: 'H6', actual: 36000, target: 42000 },
-          { week: 'H7', actual: 34000, target: 42000 },
-          { week: 'H8', actual: 32000, target: 42000 },
-        ]
-      },
-      {
-        id: 2,
-        name: 'Site A Su Tasarrufu',
-        type: 'water',
-        site: 'Site A',
-        targetValue: 10000,
-        currentValue: 8500,
-        unit: 'm³',
-        startDate: '2024-11-01',
-        endDate: '2024-12-31',
-        status: 'on_track',
-        progress: 85,
-        trend: [
-          { week: 'H1', actual: 1200, target: 1250 },
-          { week: 'H2', actual: 1150, target: 1250 },
-          { week: 'H3', actual: 1100, target: 1250 },
-          { week: 'H4', actual: 1050, target: 1250 },
-        ]
-      },
-      {
-        id: 3,
-        name: 'Site B Isıtma Optimizasyonu',
-        type: 'gas',
-        site: 'Site B',
-        targetValue: 15000,
-        currentValue: 16200,
-        unit: 'm³',
-        startDate: '2024-10-01',
-        endDate: '2024-12-31',
-        status: 'at_risk',
-        progress: 108,
-        trend: [
-          { week: 'H1', actual: 2200, target: 1875 },
-          { week: 'H2', actual: 2100, target: 1875 },
-          { week: 'H3', actual: 2000, target: 1875 },
-          { week: 'H4', actual: 1950, target: 1875 },
-        ]
-      },
-      {
-        id: 4,
-        name: '2024 Yıllık Enerji Hedefi',
-        type: 'energy',
-        site: 'Tüm Siteler',
-        targetValue: 2000000,
-        currentValue: 1850000,
-        unit: 'kWh',
-        startDate: '2024-01-01',
-        endDate: '2024-12-31',
-        status: 'completed',
-        progress: 92.5,
-        trend: []
+  const loadSites = async () => {
+    try {
+      const res = await fetch('/api/sites?limit=500');
+      const data = await safeJson(res);
+      if (data) setSites(data.sites || data || []);
+    } catch (err) {
+      console.error('Sites load error:', err);
+    }
+  };
+
+  const loadGoals = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetch('/api/consumption-goals');
+      const data = await safeJson(res);
+
+      if (data) {
+        setGoals(data.goals || data || []);
+      } else {
+        // Demo data
+        setGoals([
+          { id: 1, name: 'Kış Dönemi Tasarruf', type: 'energy', site: 'Merkez Site', targetValue: 100000, currentValue: 85000, status: 'on_track', startDate: '2024-12-01', endDate: '2025-02-28', progress: 85 },
+          { id: 2, name: 'Su Tüketimi Azaltma', type: 'water', site: 'Tüm Siteler', targetValue: 5000, currentValue: 4200, status: 'on_track', startDate: '2024-01-01', endDate: '2024-12-31', progress: 84 },
+          { id: 3, name: 'Enerji Verimliliği', type: 'energy', site: 'Kuzey Site', targetValue: 50000, currentValue: 48000, status: 'at_risk', startDate: '2024-10-01', endDate: '2025-01-31', progress: 96 }
+        ]);
       }
-    ]);
+
+    } catch (err) {
+      console.error('Goals load error:', err);
+      setGoals([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const [newGoal, setNewGoal] = useState({
@@ -175,6 +145,29 @@ function ConsumptionGoals() {
     atRisk: goals.filter(g => g.status === 'at_risk').length,
     completed: goals.filter(g => g.status === 'completed').length
   };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Hedef verileri yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={loadGoals}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="goals-page">
@@ -421,9 +414,11 @@ function ConsumptionGoals() {
                     onChange={e => setNewGoal({...newGoal, site: e.target.value})}
                   >
                     <option value="">Tüm Siteler</option>
-                    <option value="Site A">Site A</option>
-                    <option value="Site B">Site B</option>
-                    <option value="Site C">Site C</option>
+                    {sites.map(site => (
+                      <option key={site.id || site.siteId} value={site.name || site.siteName}>
+                        {site.name || site.siteName}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

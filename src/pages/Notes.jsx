@@ -1,163 +1,139 @@
 import React, { useState, useEffect } from 'react';
+import { RefreshCw, AlertTriangle } from 'lucide-react';
 
 function Notes() {
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState({ title: '', content: '', category: 'genel' });
   const [filter, setFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadNotes();
   }, []);
 
-  const loadNotes = () => {
-    const saved = localStorage.getItem('system_notes');
-    if (saved) {
-      setNotes(JSON.parse(saved));
-    } else {
-      // Varsayilan notlar
-      const defaultNotes = [
-        {
-          id: 1,
-          title: 'Gateway Sunucu Bilgileri',
-          content: `MEVCUT SUNUCU: 94.73.148.5
-DATABASE: u9773530_paylas
-USER: u9773530_paylas
-PORT: 1433 (SQL Server)
+  const loadNotes = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-Gateway'ler bu sunucuya baglanıyor ve veritabanini guncelliyor.
-IIS uzerinde bir servis calisiyor (403 Forbidden - erisim engelli).
+      const res = await fetch('/api/notes');
+      const contentType = res.headers.get('content-type');
 
-GATEWAY TURLERI:
-- Orion GSM: 202 adet (TCP port 5000 veya 80 uzerinden)
-- Wimbus: 28 adet (RF uzerinden yerel toplayici)
-- Belirsiz: 7 adet
+      if (!res.ok || !contentType?.includes('application/json')) {
+        // API mevcut değil - localStorage kullan
+        const saved = localStorage.getItem('notes');
+        setNotes(saved ? JSON.parse(saved) : []);
+        setLoading(false);
+        return;
+      }
 
-AKTIF DURUM:
-- Son 1 saat: ~161 gateway aktif
-- Toplam: 237 gateway
+      const data = await res.json();
+      setNotes(data.notes || data || []);
 
-YAPILACAKLAR:
-1. 94.73.148.5 sunucusuna RDP/SSH erisimi saglanmali
-2. Gateway baglanti servisinin konfigurasyonu incelenmeli
-3. Gerekirse bu panel sunucuya deploy edilmeli`,
-          category: 'sunucu',
-          createdAt: new Date().toISOString(),
-          pinned: true
-        },
-        {
-          id: 2,
-          title: 'Backend Deploy Bilgileri',
-          content: `FRONTEND (Vercel):
-- URL: https://web-panel-beta.vercel.app
-
-BACKEND (Render):
-- URL: https://energy-management-panel.onrender.com
-- Health: https://energy-management-panel.onrender.com/api/health
-
-ENVIRONMENT VARIABLES:
-DB_SERVER=94.73.148.5
-DB_DATABASE=u9773530_paylas
-DB_USER=u9773530_paylas
-DB_PASSWORD=QQwv35N7UDjc38K
-DB_PORT=1433
-
-RAILWAY DEPLOY:
-1. railway.app'e giris yap
-2. New Project > Deploy from GitHub
-3. Environment variables ekle (yukaridakiler)
-4. Deploy!
-
-ALTERNATIF - RENDER.COM:
-1. render.com'a giris yap
-2. New > Web Service
-3. Build Command: npm install
-4. Start Command: node server/index.js
-5. Environment variables ekle`,
-          category: 'sunucu',
-          createdAt: new Date().toISOString(),
-          pinned: true
-        },
-        {
-          id: 3,
-          title: 'Veritabani Yapisi',
-          content: `TABLOLAR:
-- siteler: 1,227 site
-- binalar: 2,399 bina (237 gateway'li)
-- daireler: 89,149 daire
-- sayaclar: 111,848 sayac
-- sayacdegerler: Okuma gecmisi
-- okumalar: Okuma loglari
-- firmalar: Orion Enerji, INTEGRAL SAYAC, TUGRA GRUP
-
-ONEMLI SUTUNLAR (binalar):
-- imei: Gateway kimlik numarasi
-- modemip: Gateway'in public IP adresi
-- sonerisim: Son erisim zamani
-- cihaztur: Orion, Wimbus, vb.
-- otomatikokuma: Otomatik okuma aktif mi`,
-          category: 'veritabani',
-          createdAt: new Date().toISOString(),
-          pinned: false
-        },
-        {
-          id: 4,
-          title: 'API Endpointleri',
-          content: `GATEWAY YONETIMI:
-- GET /api/mbus/gateways - Tum gateway'ler
-- GET /api/gateways/stats/overview - Istatistikler
-- POST /api/gateways/:id/ping - Durum kontrolu
-- GET /api/health - Sunucu saglik kontrolu
-
-FATURALANDIRMA:
-- POST /api/billing/generate - Fatura olustur
-- POST /api/billing/distribute - Fatura dagit
-- GET /api/billing/analysis/:siteId - Analiz
-
-OKUMA:
-- POST /api/mbus/read-site - Site okuma baslat
-- POST /api/mbus/read-building - Bina okuma baslat
-- GET /api/mbus/status/:jobId - Okuma durumu
-
-ZAMANLAMA:
-- GET /api/schedule/jobs - Zamanlanmis isler
-- POST /api/schedule/set - Zamanlama ayarla`,
-          category: 'api',
-          createdAt: new Date().toISOString(),
-          pinned: false
-        }
-      ];
-      setNotes(defaultNotes);
-      localStorage.setItem('system_notes', JSON.stringify(defaultNotes));
+    } catch (err) {
+      console.error('Notes load error:', err);
+      const saved = localStorage.getItem('notes');
+      setNotes(saved ? JSON.parse(saved) : []);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const saveNotes = (updatedNotes) => {
-    setNotes(updatedNotes);
-    localStorage.setItem('system_notes', JSON.stringify(updatedNotes));
+  const saveToLocalStorage = (updatedNotes) => {
+    localStorage.setItem('notes', JSON.stringify(updatedNotes));
   };
 
-  const addNote = () => {
+  const addNote = async () => {
     if (!newNote.title.trim() || !newNote.content.trim()) return;
 
-    const note = {
-      id: Date.now(),
-      ...newNote,
-      createdAt: new Date().toISOString(),
-      pinned: false
-    };
+    try {
+      setSaving(true);
 
-    saveNotes([note, ...notes]);
-    setNewNote({ title: '', content: '', category: 'genel' });
-  };
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newNote, pinned: false })
+      });
 
-  const deleteNote = (id) => {
-    if (confirm('Bu notu silmek istediginize emin misiniz?')) {
-      saveNotes(notes.filter(n => n.id !== id));
+      const contentType = res.headers.get('content-type');
+
+      if (res.ok && contentType?.includes('application/json')) {
+        const data = await res.json();
+        const savedNote = data.note || data;
+        setNotes([savedNote, ...notes]);
+      } else {
+        // Fallback to localStorage
+        const newNoteObj = {
+          id: Date.now(),
+          ...newNote,
+          pinned: false,
+          createdAt: new Date().toISOString()
+        };
+        const updatedNotes = [newNoteObj, ...notes];
+        setNotes(updatedNotes);
+        saveToLocalStorage(updatedNotes);
+      }
+
+      setNewNote({ title: '', content: '', category: 'genel' });
+
+    } catch (err) {
+      console.error('Add note error:', err);
+      // Fallback to localStorage
+      const newNoteObj = {
+        id: Date.now(),
+        ...newNote,
+        pinned: false,
+        createdAt: new Date().toISOString()
+      };
+      const updatedNotes = [newNoteObj, ...notes];
+      setNotes(updatedNotes);
+      saveToLocalStorage(updatedNotes);
+      setNewNote({ title: '', content: '', category: 'genel' });
+    } finally {
+      setSaving(false);
     }
   };
 
-  const togglePin = (id) => {
-    saveNotes(notes.map(n => n.id === id ? { ...n, pinned: !n.pinned } : n));
+  const deleteNote = async (id) => {
+    if (!confirm('Bu notu silmek istediğinize emin misiniz?')) return;
+
+    try {
+      const res = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      const updatedNotes = notes.filter(n => n.id !== id);
+      setNotes(updatedNotes);
+      saveToLocalStorage(updatedNotes);
+
+    } catch (err) {
+      console.error('Delete note error:', err);
+      const updatedNotes = notes.filter(n => n.id !== id);
+      setNotes(updatedNotes);
+      saveToLocalStorage(updatedNotes);
+    }
+  };
+
+  const togglePin = async (id) => {
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+
+    try {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: !note.pinned })
+      });
+
+      const updatedNotes = notes.map(n => n.id === id ? { ...n, pinned: !n.pinned } : n);
+      setNotes(updatedNotes);
+      saveToLocalStorage(updatedNotes);
+
+    } catch (err) {
+      console.error('Toggle pin error:', err);
+      const updatedNotes = notes.map(n => n.id === id ? { ...n, pinned: !n.pinned } : n);
+      setNotes(updatedNotes);
+      saveToLocalStorage(updatedNotes);
+    }
   };
 
   const formatDate = (date) => {
@@ -180,6 +156,29 @@ ZAMANLAMA:
       if (!a.pinned && b.pinned) return 1;
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Notlar yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={loadNotes}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="notes-page">
@@ -214,8 +213,8 @@ ZAMANLAMA:
             onChange={(e) => setNewNote({ ...newNote, content: e.target.value })}
             rows={4}
           />
-          <button className="btn btn-primary" onClick={addNote}>
-            Not Ekle
+          <button className="btn btn-primary" onClick={addNote} disabled={saving}>
+            {saving ? 'Ekleniyor...' : 'Not Ekle'}
           </button>
         </div>
       </div>

@@ -7,6 +7,14 @@ function MapView() {
   const [loading, setLoading] = useState(true);
   const [selectedSite, setSelectedSite] = useState(null);
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchSites();
   }, []);
@@ -15,16 +23,21 @@ function MapView() {
     try {
       setLoading(true);
       const res = await fetch('/api/map/sites');
-      const data = await res.json();
-      // Filter valid coordinates
-      const validSites = data.filter(s =>
-        s.lat && s.lng &&
-        !isNaN(parseFloat(s.lat)) &&
-        !isNaN(parseFloat(s.lng))
-      );
-      setSites(validSites);
+      const data = await safeJson(res);
+      if (data) {
+        // Filter valid coordinates
+        const validSites = data.filter(s =>
+          s.lat && s.lng &&
+          !isNaN(parseFloat(s.lat)) &&
+          !isNaN(parseFloat(s.lng))
+        );
+        setSites(validSites);
+      } else {
+        setSites([]);
+      }
     } catch (err) {
       console.error('Map sites error:', err);
+      setSites([]);
     } finally {
       setLoading(false);
     }

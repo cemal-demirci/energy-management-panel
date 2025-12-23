@@ -33,130 +33,76 @@ function MaintenanceManagement() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sites, setSites] = useState([]);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
 
   useEffect(() => {
     loadData();
+    loadSites();
   }, []);
 
-  const loadData = () => {
-    // Maintenance tasks
-    setTasks([
-      {
-        id: 1,
-        title: 'Gateway #GW-001 Batarya Değişimi',
-        type: 'gateway',
-        site: 'Site A',
-        building: 'A Blok',
-        priority: 'high',
-        status: 'pending',
-        dueDate: '2024-12-24',
-        assignee: 'Ali Öztürk',
-        description: 'Batarya seviyesi %15 altına düştü. Acil değişim gerekli.',
-        createdAt: '2024-12-20',
-        estimatedTime: '30 dk'
-      },
-      {
-        id: 2,
-        title: 'Sayaç Kalibrasyonu - Blok B',
-        type: 'meter',
-        site: 'Site A',
-        building: 'B Blok',
-        priority: 'medium',
-        status: 'in_progress',
-        dueDate: '2024-12-25',
-        assignee: 'Mehmet Kaya',
-        description: 'Yıllık kalibrasyon kontrolü.',
-        createdAt: '2024-12-18',
-        estimatedTime: '2 saat'
-      },
-      {
-        id: 3,
-        title: 'M-Bus Haberleşme Arızası',
-        type: 'communication',
-        site: 'Site B',
-        building: 'C Blok',
-        priority: 'high',
-        status: 'pending',
-        dueDate: '2024-12-23',
-        assignee: null,
-        description: '3 gündür veri alınamıyor. Haberleşme hattı kontrol edilmeli.',
-        createdAt: '2024-12-21',
-        estimatedTime: '1 saat'
-      },
-      {
-        id: 4,
-        title: 'Gateway Firmware Güncelleme',
-        type: 'gateway',
-        site: 'Site C',
-        building: 'Tüm Binalar',
-        priority: 'low',
-        status: 'scheduled',
-        dueDate: '2024-12-28',
-        assignee: 'Ali Öztürk',
-        description: 'v2.3.1 firmware güncellemesi.',
-        createdAt: '2024-12-15',
-        estimatedTime: '4 saat'
-      },
-      {
-        id: 5,
-        title: 'Sayaç Değişimi - Daire 12',
-        type: 'meter',
-        site: 'Site A',
-        building: 'A Blok',
-        priority: 'medium',
-        status: 'completed',
-        dueDate: '2024-12-20',
-        assignee: 'Mehmet Kaya',
-        description: 'Arızalı sayaç yenisiyle değiştirildi.',
-        createdAt: '2024-12-10',
-        completedAt: '2024-12-20',
-        estimatedTime: '1 saat'
+  const loadSites = async () => {
+    try {
+      const res = await fetch('/api/sites?limit=500');
+      const data = await safeJson(res);
+      if (data) {
+        setSites(data.sites || data || []);
       }
-    ]);
+    } catch (err) {
+      console.error('Sites load error:', err);
+    }
+  };
 
-    // Maintenance schedules
-    setSchedules([
-      {
-        id: 1,
-        name: 'Aylık Gateway Kontrolü',
-        frequency: 'monthly',
-        nextRun: '2025-01-01',
-        lastRun: '2024-12-01',
-        sites: ['Site A', 'Site B', 'Site C'],
-        tasks: 12,
-        active: true
-      },
-      {
-        id: 2,
-        name: 'Yıllık Sayaç Kalibrasyonu',
-        frequency: 'yearly',
-        nextRun: '2025-03-15',
-        lastRun: '2024-03-15',
-        sites: ['Tüm Siteler'],
-        tasks: 450,
-        active: true
-      },
-      {
-        id: 3,
-        name: 'Haftalık Batarya Kontrolü',
-        frequency: 'weekly',
-        nextRun: '2024-12-30',
-        lastRun: '2024-12-23',
-        sites: ['Site A'],
-        tasks: 24,
-        active: true
-      },
-      {
-        id: 4,
-        name: 'Çeyreklik Firmware Güncelleme',
-        frequency: 'quarterly',
-        nextRun: '2025-01-15',
-        lastRun: '2024-10-15',
-        sites: ['Tüm Siteler'],
-        tasks: 50,
-        active: false
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [tasksRes, schedulesRes] = await Promise.all([
+        fetch('/api/maintenance/tasks'),
+        fetch('/api/maintenance/schedules')
+      ]);
+
+      const tasksData = await safeJson(tasksRes);
+      const schedulesData = await safeJson(schedulesRes);
+
+      // Demo data if API unavailable
+      if (tasksData) {
+        setTasks(tasksData.tasks || tasksData || []);
+      } else {
+        setTasks([
+          { id: 1, title: 'Gateway batarya kontrolü', type: 'gateway', site: 'Merkez Site', building: 'A Blok', priority: 'high', status: 'pending', dueDate: '2024-01-15', assignee: 'Ali Öztürk', description: 'Gateway batarya seviyesi düşük', estimatedTime: '30 dk' },
+          { id: 2, title: 'Sayaç veri okuma hatası', type: 'meter', site: 'Kuzey Site', building: 'B Blok', priority: 'medium', status: 'in_progress', dueDate: '2024-01-16', assignee: 'Mehmet Kaya', description: 'Sayaç veri göndermiyor', estimatedTime: '1 saat' },
+          { id: 3, title: 'Haberleşme kesintisi', type: 'communication', site: 'Güney Site', building: 'C Blok', priority: 'high', status: 'pending', dueDate: '2024-01-14', assignee: '', description: 'Gateway bağlantı sorunu', estimatedTime: '2 saat' }
+        ]);
       }
-    ]);
+
+      if (schedulesData) {
+        setSchedules(schedulesData.schedules || schedulesData || []);
+      } else {
+        setSchedules([
+          { id: 1, name: 'Aylık Gateway Kontrolü', frequency: 'monthly', lastRun: '2024-01-01', nextRun: '2024-02-01', sites: ['Merkez Site', 'Kuzey Site'], tasks: 12, active: true },
+          { id: 2, name: 'Haftalık Sayaç Okuma', frequency: 'weekly', lastRun: '2024-01-10', nextRun: '2024-01-17', sites: ['Tüm Siteler'], tasks: 150, active: true },
+          { id: 3, name: 'Yıllık Kalibrasyon', frequency: 'yearly', lastRun: '2023-06-15', nextRun: '2024-06-15', sites: ['Merkez Site'], tasks: 50, active: false }
+        ]);
+      }
+
+    } catch (err) {
+      console.error('Load data error:', err);
+      setTasks([]);
+      setSchedules([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const [newTask, setNewTask] = useState({
@@ -251,6 +197,16 @@ function MaintenanceManagement() {
     setNewTask({ title: '', type: 'meter', site: '', building: '', priority: 'medium', dueDate: '', assignee: '', description: '' });
     setShowAddModal(false);
   };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Veriler yükleniyor...</p>
+      </div>
+    );
+  }
+
 
   return (
     <div className="maintenance-page">
@@ -512,9 +468,11 @@ function MaintenanceManagement() {
                     onChange={e => setNewTask({...newTask, site: e.target.value})}
                   >
                     <option value="">Seçin</option>
-                    <option value="Site A">Site A</option>
-                    <option value="Site B">Site B</option>
-                    <option value="Site C">Site C</option>
+                    {sites.map(site => (
+                      <option key={site.id || site.siteId} value={site.name || site.siteName}>
+                        {site.name || site.siteName}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group">

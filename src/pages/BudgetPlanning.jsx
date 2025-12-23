@@ -28,97 +28,67 @@ function BudgetPlanning() {
   const [selectedSite, setSelectedSite] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeView, setActiveView] = useState('overview');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sites, setSites] = useState([]);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
+  useEffect(() => {
+    loadSites();
+  }, []);
 
   useEffect(() => {
     loadBudgets();
   }, [selectedYear, selectedSite]);
 
-  const loadBudgets = () => {
-    setBudgets([
-      {
-        id: 1,
-        category: 'Elektrik',
-        icon: Zap,
-        color: '#3B82F6',
-        budget: 500000,
-        spent: 425000,
-        forecast: 485000,
-        lastYear: 480000,
-        monthly: [
-          { month: 'Oca', budget: 45000, actual: 48000 },
-          { month: 'Şub', budget: 42000, actual: 44000 },
-          { month: 'Mar', budget: 38000, actual: 36000 },
-          { month: 'Nis', budget: 35000, actual: 33000 },
-          { month: 'May', budget: 32000, actual: 30000 },
-          { month: 'Haz', budget: 35000, actual: 38000 },
-          { month: 'Tem', budget: 42000, actual: 45000 },
-          { month: 'Ağu', budget: 45000, actual: 48000 },
-          { month: 'Eyl', budget: 40000, actual: 38000 },
-          { month: 'Eki', budget: 42000, actual: 40000 },
-          { month: 'Kas', budget: 48000, actual: 45000 },
-          { month: 'Ara', budget: 56000, actual: null },
-        ]
-      },
-      {
-        id: 2,
-        category: 'Su',
-        icon: Droplets,
-        color: '#10B981',
-        budget: 80000,
-        spent: 68000,
-        forecast: 78000,
-        lastYear: 75000,
-        monthly: [
-          { month: 'Oca', budget: 6000, actual: 5800 },
-          { month: 'Şub', budget: 5500, actual: 5600 },
-          { month: 'Mar', budget: 6000, actual: 5900 },
-          { month: 'Nis', budget: 6500, actual: 6200 },
-          { month: 'May', budget: 7000, actual: 7200 },
-          { month: 'Haz', budget: 7500, actual: 7800 },
-          { month: 'Tem', budget: 8000, actual: 8500 },
-          { month: 'Ağu', budget: 8000, actual: 8200 },
-          { month: 'Eyl', budget: 7000, actual: 6800 },
-          { month: 'Eki', budget: 6500, actual: 6000 },
-          { month: 'Kas', budget: 6000, actual: null },
-          { month: 'Ara', budget: 6000, actual: null },
-        ]
-      },
-      {
-        id: 3,
-        category: 'Doğalgaz',
-        icon: Flame,
-        color: '#F59E0B',
-        budget: 150000,
-        spent: 142000,
-        forecast: 165000,
-        lastYear: 145000,
-        monthly: [
-          { month: 'Oca', budget: 22000, actual: 25000 },
-          { month: 'Şub', budget: 20000, actual: 22000 },
-          { month: 'Mar', budget: 15000, actual: 14000 },
-          { month: 'Nis', budget: 8000, actual: 7500 },
-          { month: 'May', budget: 3000, actual: 2800 },
-          { month: 'Haz', budget: 2000, actual: 1800 },
-          { month: 'Tem', budget: 2000, actual: 1500 },
-          { month: 'Ağu', budget: 2000, actual: 1800 },
-          { month: 'Eyl', budget: 5000, actual: 4500 },
-          { month: 'Eki', budget: 12000, actual: 15000 },
-          { month: 'Kas', budget: 25000, actual: 28000 },
-          { month: 'Ara', budget: 34000, actual: null },
-        ]
-      },
-      {
-        id: 4,
-        category: 'Bakım',
-        icon: Calculator,
-        color: '#8B5CF6',
-        budget: 60000,
-        spent: 45000,
-        forecast: 55000,
-        lastYear: 52000,
-        monthly: []
+  const loadSites = async () => {
+    try {
+      const res = await fetch('/api/sites?limit=500');
+      const data = await safeJson(res);
+      if (data) setSites(data.sites || data || []);
+    } catch (err) {
+      console.error('Sites load error:', err);
+    }
+  };
+
+  const loadBudgets = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        year: selectedYear,
+        ...(selectedSite !== 'all' && { siteId: selectedSite })
+      });
+
+      const res = await fetch(`/api/budgets?${params}`);
+      const data = await safeJson(res);
+
+      if (data) {
+        setBudgets(data.budgets || data || []);
+      } else {
+        // Demo data
+        setBudgets([
+          { id: 1, category: 'Isıtma', budget: 500000, spent: 380000, forecast: 520000, color: '#EF4444' },
+          { id: 2, category: 'Elektrik', budget: 300000, spent: 210000, forecast: 290000, color: '#F59E0B' },
+          { id: 3, category: 'Su', budget: 150000, spent: 95000, forecast: 140000, color: '#3B82F6' },
+          { id: 4, category: 'Bakım', budget: 100000, spent: 45000, forecast: 85000, color: '#10B981' }
+        ]);
       }
-    ]);
+
+    } catch (err) {
+      console.error('Budget load error:', err);
+      setBudgets([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const totalBudget = budgets.reduce((sum, b) => sum + b.budget, 0);
@@ -153,6 +123,29 @@ function BudgetPlanning() {
     if (ratio > 0.9) return '#F59E0B';
     return '#10B981';
   };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Bütçe verileri yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={loadBudgets}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="budget-page">
@@ -530,9 +523,11 @@ function BudgetPlanning() {
                     onChange={e => setNewBudget({...newBudget, site: e.target.value})}
                   >
                     <option value="">Tüm Siteler</option>
-                    <option value="Site A">Site A</option>
-                    <option value="Site B">Site B</option>
-                    <option value="Site C">Site C</option>
+                    {sites.map(site => (
+                      <option key={site.id || site.siteId} value={site.name || site.siteName}>
+                        {site.name || site.siteName}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

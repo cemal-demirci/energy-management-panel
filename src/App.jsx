@@ -33,7 +33,8 @@ import {
   ClipboardList,
   HardHat,
   LogOut,
-  User
+  User,
+  Command
 } from 'lucide-react';
 
 // Page imports
@@ -71,6 +72,7 @@ import BulkSiteEntry from './pages/BulkSiteEntry';
 import LiveMBusReader from './pages/LiveMBusReader';
 import ServiceWorkAssignment from './pages/ServiceWorkAssignment';
 import FieldWorkerPortal from './pages/FieldWorkerPortal';
+import RemoteControl from './pages/RemoteControl';
 
 function App() {
   const location = useLocation();
@@ -110,6 +112,7 @@ function App() {
     // Operasyonlar
     { path: '/mbus', label: 'M-Bus Okuma', icon: BookOpen, section: 'operations' },
     { path: '/live-mbus', label: 'Canlı M-Bus', icon: Wifi, section: 'operations' },
+    { path: '/remote-control', label: 'Uzaktan Kontrol', icon: Command, section: 'operations' },
     { path: '/manual-entry', label: 'Manuel Giriş', icon: PenSquare, section: 'operations' },
     { path: '/ml-entry', label: 'ML Veri Girişi', icon: Brain, section: 'operations' },
     { path: '/bulk-entry', label: 'Toplu Okuma', icon: Layers, section: 'operations' },
@@ -180,7 +183,7 @@ function App() {
             <div className="logo-icon-wrapper">
               <Flame size={24} />
             </div>
-            {sidebarOpen && <h1>Isı Sayaç Yönetim</h1>}
+            {sidebarOpen && <h1>Integral Bina</h1>}
           </div>
           <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
@@ -236,7 +239,7 @@ function App() {
           )}
           {sidebarOpen && (
             <div className="version-info">
-              <span>v3.2.0 - Enterprise Pro</span>
+              <span>v3.2.0 - Enterprise</span>
               <a href="https://cemal.online" target="_blank" rel="noopener noreferrer" className="footer-link">
                 cemal.online
               </a>
@@ -258,6 +261,7 @@ function App() {
           {/* Operations */}
           <Route path="/mbus" element={<MBusReader />} />
           <Route path="/live-mbus" element={<LiveMBusReader />} />
+          <Route path="/remote-control" element={<RemoteControl />} />
           <Route path="/manual-entry" element={<ManualEntry />} />
           <Route path="/ml-entry" element={<MLDataEntry />} />
           <Route path="/bulk-entry" element={<BulkSiteEntry />} />

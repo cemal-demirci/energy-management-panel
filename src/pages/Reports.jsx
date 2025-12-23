@@ -15,7 +15,8 @@ import {
   Zap,
   Droplets,
   Users,
-  CheckCircle
+  CheckCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 function Reports() {
@@ -25,76 +26,135 @@ function Reports() {
   const [sites, setSites] = useState([]);
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [generatedReports, setGeneratedReports] = useState([]);
 
-  useEffect(() => {
-    fetchSites();
-    loadGeneratedReports();
-  }, []);
-
-  const fetchSites = async () => {
+  const safeJson = async (res) => {
     try {
-      const res = await fetch('/api/sites?limit=500');
-      const data = await res.json();
-      setSites(data);
-    } catch (err) {
-      console.error('Sites fetch error:', err);
-    }
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
   };
 
-  const loadGeneratedReports = () => {
-    // Sample generated reports
-    setGeneratedReports([
-      { id: 1, name: 'Aralık 2024 Tüketim Raporu', type: 'consumption', date: '2024-12-20', status: 'ready' },
-      { id: 2, name: 'Q4 2024 Analiz Raporu', type: 'analysis', date: '2024-12-15', status: 'ready' },
-      { id: 3, name: 'Gateway Durum Raporu', type: 'gateway', date: '2024-12-18', status: 'ready' },
-    ]);
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  const loadInitialData = async () => {
+    try {
+      setInitialLoading(true);
+      setError(null);
+
+      const [sitesRes, reportsRes] = await Promise.all([
+        fetch('/api/sites?limit=500'),
+        fetch('/api/reports/generated?limit=10')
+      ]);
+
+      const sitesData = await safeJson(sitesRes);
+      setSites(sitesData?.sites || sitesData || []);
+
+      const reportsData = await safeJson(reportsRes);
+      setGeneratedReports(reportsData?.reports || reportsData || []);
+
+    } catch (err) {
+      console.error('Load data error:', err);
+      setError(err.message);
+      setSites([]);
+      setGeneratedReports([]);
+    } finally {
+      setInitialLoading(false);
+    }
   };
 
   const generateReport = async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Simulate report generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const params = new URLSearchParams({
+        type: reportType,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+        ...(selectedSite && { siteId: selectedSite })
+      });
 
-      // Sample data based on report type
-      const sampleData = {
-        consumption: {
-          totalEnergy: 1250000,
-          totalVolume: 45000,
-          meterCount: 500,
-          avgConsumption: 2500,
-          topConsumers: [
-            { name: 'Site A - A Blok', value: 150000 },
-            { name: 'Site B - B Blok', value: 120000 },
-            { name: 'Site C - C Blok', value: 100000 },
-          ]
-        },
-        billing: {
-          totalAmount: 312500,
-          invoiceCount: 500,
-          avgInvoice: 625,
-          collectionRate: 92.5
-        },
-        gateway: {
-          totalGateways: 237,
-          activeGateways: 198,
-          offlineGateways: 39,
-          avgUptime: 96.5
-        }
-      };
+      const res = await fetch(`/api/reports/generate?${params}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: reportType,
+          dateRange,
+          siteId: selectedSite || null
+        })
+      });
 
-      setReportData(sampleData[reportType] || sampleData.consumption);
+      const data = await safeJson(res);
+      if (!data) {
+        throw new Error('Rapor oluşturulamadı');
+      }
+      setReportData(data.report || data);
+
+      // Refresh generated reports list
+      const reportsRes = await fetch('/api/reports/generated?limit=10');
+      const reportsData = await safeJson(reportsRes);
+      setGeneratedReports(reportsData?.reports || reportsData || []);
+
     } catch (err) {
       console.error('Report generation error:', err);
+      setError(err.message);
+      setReportData(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const exportReport = (format) => {
-    // Simulate export
-    alert(`Rapor ${format.toUpperCase()} formatında indiriliyor...`);
+  const exportReport = async (format) => {
+    try {
+      const res = await fetch(`/api/reports/export?format=${format}&type=${reportType}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportData, format })
+      });
+
+      if (!res.ok) {
+        throw new Error('Rapor dışa aktarılamadı');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rapor-${reportType}-${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Rapor dışa aktarılırken hata oluştu: ' + err.message);
+    }
+  };
+
+  const downloadReport = async (reportId) => {
+    try {
+      const res = await fetch(`/api/reports/${reportId}/download`);
+      if (!res.ok) throw new Error('Rapor indirilemedi');
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rapor-${reportId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error('Download error:', err);
+      alert('Rapor indirilemedi: ' + err.message);
+    }
   };
 
   const reportTypes = [
@@ -104,6 +164,29 @@ function Reports() {
     { id: 'anomaly', label: 'Anomali Raporu', icon: TrendingUp, description: 'Anormal tüketim tespiti' },
     { id: 'comparison', label: 'Karşılaştırma', icon: PieChart, description: 'Dönemsel karşılaştırma' },
   ];
+
+  if (initialLoading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Veriler yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error && !reportData) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={loadInitialData}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="reports-page">
@@ -242,7 +325,7 @@ function Reports() {
                     <span className="report-date">{report.date}</span>
                   </div>
                   <div className="report-actions">
-                    <button className="btn-icon" title="İndir">
+                    <button className="btn-icon" title="İndir" onClick={() => downloadReport(report.id)}>
                       <Download size={16} />
                     </button>
                   </div>

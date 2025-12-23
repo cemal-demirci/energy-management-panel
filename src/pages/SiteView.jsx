@@ -8,6 +8,14 @@ function SiteView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchCities();
     fetchSites();
@@ -16,10 +24,11 @@ function SiteView() {
   const fetchCities = async () => {
     try {
       const res = await fetch('/api/cities');
-      const data = await res.json();
-      setCities(data);
+      const data = await safeJson(res);
+      setCities(data || []);
     } catch (err) {
       console.error('Cities error:', err);
+      setCities([]);
     }
   };
 
@@ -28,10 +37,11 @@ function SiteView() {
       setLoading(true);
       const url = city ? `/api/sites?city=${encodeURIComponent(city)}&limit=200` : '/api/sites?limit=200';
       const res = await fetch(url);
-      const data = await res.json();
-      setSites(data);
+      const data = await safeJson(res);
+      setSites(data || []);
     } catch (err) {
       console.error('Sites error:', err);
+      setSites([]);
     } finally {
       setLoading(false);
     }

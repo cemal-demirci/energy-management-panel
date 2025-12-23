@@ -15,29 +15,65 @@ function Login({ onLogin }) {
     setError('');
     setLoading(true);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
 
-    // Check credentials
-    if (username === 'admin' && password === 'admin') {
-      // Store auth in localStorage
-      const authData = {
-        user: {
-          username: 'admin',
-          name: 'Sistem Yöneticisi',
-          role: 'admin'
-        },
-        token: 'demo-token-' + Date.now(),
-        loginTime: new Date().toISOString()
-      };
-      localStorage.setItem('auth', JSON.stringify(authData));
-      onLogin(authData);
-      navigate('/');
-    } else {
-      setError('Kullanıcı adı veya şifre hatalı!');
+      const contentType = res.headers.get('content-type');
+
+      // API mevcut ve JSON dönüyorsa
+      if (res.ok && contentType?.includes('application/json')) {
+        const data = await res.json();
+        const authData = {
+          user: data.user || {
+            username: username,
+            name: data.name || username,
+            role: data.role || 'user'
+          },
+          token: data.token,
+          loginTime: new Date().toISOString()
+        };
+        localStorage.setItem('auth', JSON.stringify(authData));
+        onLogin(authData);
+        navigate('/');
+        return;
+      }
+
+      // API yoksa veya hata varsa - local login fallback
+      if (username === 'admin' && password === 'admin') {
+        const authData = {
+          user: { username: 'admin', name: 'Admin', role: 'admin' },
+          token: 'local-token-' + Date.now(),
+          loginTime: new Date().toISOString()
+        };
+        localStorage.setItem('auth', JSON.stringify(authData));
+        onLogin(authData);
+        navigate('/');
+        return;
+      }
+
+      throw new Error('Kullanıcı adı veya şifre hatalı!');
+
+    } catch (err) {
+      // Fallback login for admin/admin
+      if (username === 'admin' && password === 'admin') {
+        const authData = {
+          user: { username: 'admin', name: 'Admin', role: 'admin' },
+          token: 'local-token-' + Date.now(),
+          loginTime: new Date().toISOString()
+        };
+        localStorage.setItem('auth', JSON.stringify(authData));
+        onLogin(authData);
+        navigate('/');
+        return;
+      }
+      setError(err.message || 'Kullanıcı adı veya şifre hatalı!');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -55,9 +91,9 @@ function Login({ onLogin }) {
               <div className="logo-icon">
                 <Flame size={32} />
               </div>
-              <h1>Isı Sayaç Yönetim</h1>
+              <h1>Integral Bina Yazılım</h1>
             </div>
-            <p className="login-subtitle">Merkezi Isıtma Sistemi Yönetim Paneli</p>
+            <p className="login-subtitle">Enerji Yönetim Sistemi</p>
           </div>
 
           <form onSubmit={handleSubmit} className="login-form">
@@ -124,9 +160,6 @@ function Login({ onLogin }) {
           </form>
 
           <div className="login-footer">
-            <p className="demo-info">
-              Demo Giriş: <strong>admin</strong> / <strong>admin</strong>
-            </p>
             <a href="https://cemal.online" target="_blank" rel="noopener noreferrer" className="footer-link">
               cemal.online
             </a>

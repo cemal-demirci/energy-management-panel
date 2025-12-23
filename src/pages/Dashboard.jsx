@@ -34,96 +34,75 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [temperatureData, setTemperatureData] = useState([]);
   const [energyTrend, setEnergyTrend] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchData();
-    // Simulate real-time temperature data
-    generateTemperatureData();
-    generateEnergyTrend();
   }, []);
+
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) {
+        return await res.json();
+      }
+    } catch {}
+    return null;
+  };
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [statsRes, cityRes] = await Promise.all([
+      setError(null);
+
+      // Tüm verileri paralel olarak çek
+      const [statsRes, cityRes, tempRes, energyRes] = await Promise.all([
         fetch('/api/dashboard'),
-        fetch('/api/analytics/by-city')
+        fetch('/api/analytics/by-city'),
+        fetch('/api/dashboard/temperature-history?hours=24'),
+        fetch('/api/dashboard/energy-trend?months=12')
       ]);
 
-      const statsData = await statsRes.json();
-      const cityDataRes = await cityRes.json();
+      // Dashboard stats
+      const statsData = await safeJson(statsRes);
+      if (statsData) {
+        setStats(statsData);
+      } else {
+        // Default stats
+        setStats({
+          totalSites: 0,
+          totalBuildings: 0,
+          totalMeters: 0,
+          totalEnergy: 0,
+          activeGateways: 0,
+          alerts: 0
+        });
+      }
 
-      setStats(statsData);
-      setCityData(cityDataRes.slice(0, 10));
+      // City data
+      const cityDataRes = await safeJson(cityRes);
+      setCityData(cityDataRes ? cityDataRes.slice(0, 10) : []);
+
+      // Temperature history
+      const tempData = await safeJson(tempRes);
+      setTemperatureData(tempData || []);
+
+      // Energy trend
+      const energyData = await safeJson(energyRes);
+      setEnergyTrend(energyData || []);
+
     } catch (err) {
       console.error('Dashboard error:', err);
-      // Demo data for heat meters
-      setStats({
-        toplamIl: 12,
-        toplamSite: 48,
-        toplamBina: 156,
-        toplamSayac: 2847,
-        toplamEnerji: 458720000, // Wh
-        toplamHacim: 12450.5, // m³
-        hataliSayac: 23,
-        bugunOkunan: 2134,
-        haftaOkunan: 18420,
-        aktifSayac: 2824,
-        toplamDaire: 3240,
-        toplamIlce: 34,
-        ortalamaGirisSicaklik: 72.5,
-        ortalamaCikisSicaklik: 48.3,
-        ortalamaDeltaT: 24.2,
-        toplamDebi: 845.6,
-        gunlukEnerji: 15840000,
-        aylikEnerji: 458720000
-      });
-      setCityData([
-        { city: 'İstanbul', sayacSayisi: 1245, toplamEnerji: 185000000 },
-        { city: 'Ankara', sayacSayisi: 520, toplamEnerji: 98000000 },
-        { city: 'İzmir', sayacSayisi: 380, toplamEnerji: 72000000 },
-        { city: 'Bursa', sayacSayisi: 245, toplamEnerji: 48000000 },
-        { city: 'Antalya', sayacSayisi: 180, toplamEnerji: 28000000 },
-        { city: 'Konya', sayacSayisi: 145, toplamEnerji: 22000000 }
-      ]);
+      setStats({ totalSites: 0, totalBuildings: 0, totalMeters: 0, totalEnergy: 0, activeGateways: 0, alerts: 0 });
     } finally {
       setLoading(false);
     }
   };
 
-  const generateTemperatureData = () => {
-    const data = [];
-    const now = new Date();
-    for (let i = 23; i >= 0; i--) {
-      const hour = new Date(now - i * 3600000);
-      data.push({
-        time: hour.getHours() + ':00',
-        girisSicaklik: 70 + Math.random() * 10,
-        cikisSicaklik: 45 + Math.random() * 10,
-        deltaT: 20 + Math.random() * 8
-      });
-    }
-    setTemperatureData(data);
-  };
-
-  const generateEnergyTrend = () => {
-    const data = [];
-    const months = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-    for (let i = 0; i < 12; i++) {
-      // Heating season pattern - higher in winter months
-      const seasonFactor = i < 4 || i > 9 ? 1.5 : 0.3;
-      data.push({
-        month: months[i],
-        isitma: Math.floor(80000 * seasonFactor + Math.random() * 20000),
-        sogutma: Math.floor(30000 * (1 - seasonFactor * 0.5) + Math.random() * 10000)
-      });
-    }
-    setEnergyTrend(data);
-  };
-
   const COLORS = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#8B5CF6'];
 
   const formatEnergy = (num) => {
+    if (!num) return '0 Wh';
     if (num >= 1000000000) return (num / 1000000000).toFixed(2) + ' GWh';
     if (num >= 1000000) return (num / 1000000).toFixed(2) + ' MWh';
     if (num >= 1000) return (num / 1000).toFixed(2) + ' kWh';
@@ -139,14 +118,26 @@ function Dashboard() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="dashboard-page">
+        <div className="error-banner">
+          <AlertTriangle size={24} />
+          <span>{error}</span>
+          <button onClick={fetchData}>Tekrar Dene</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-page">
       <div className="page-header">
         <div className="header-title">
           <LayoutDashboard size={28} />
           <div>
-            <h1>Isı Sayacı Dashboard</h1>
-            <p className="subtitle">Merkezi Isıtma Sistemi Yönetimi</p>
+            <h1>Enerji Yönetim Paneli</h1>
+            <p className="subtitle">Integral Bina Yazılım</p>
           </div>
         </div>
         <button className="btn btn-secondary" onClick={fetchData}>
@@ -262,106 +253,112 @@ function Dashboard() {
       </div>
 
       {/* Temperature Monitoring Chart */}
-      <div className="charts-row">
-        <div className="chart-card wide">
-          <div className="chart-header">
-            <Thermometer size={20} />
-            <h3>24 Saatlik Sıcaklık İzleme</h3>
-            <div className="chart-legend">
-              <span className="legend-item">
-                <span className="legend-color" style={{ background: '#EF4444' }}></span>
-                Giriş (T1)
-              </span>
-              <span className="legend-item">
-                <span className="legend-color" style={{ background: '#3B82F6' }}></span>
-                Çıkış (T2)
-              </span>
-              <span className="legend-item">
-                <span className="legend-color" style={{ background: '#8B5CF6' }}></span>
-                ΔT
-              </span>
+      {temperatureData.length > 0 && (
+        <div className="charts-row">
+          <div className="chart-card wide">
+            <div className="chart-header">
+              <Thermometer size={20} />
+              <h3>24 Saatlik Sıcaklık İzleme</h3>
+              <div className="chart-legend">
+                <span className="legend-item">
+                  <span className="legend-color" style={{ background: '#EF4444' }}></span>
+                  Giriş (T1)
+                </span>
+                <span className="legend-item">
+                  <span className="legend-color" style={{ background: '#3B82F6' }}></span>
+                  Çıkış (T2)
+                </span>
+                <span className="legend-item">
+                  <span className="legend-color" style={{ background: '#8B5CF6' }}></span>
+                  ΔT
+                </span>
+              </div>
             </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={temperatureData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
+                <XAxis dataKey="time" tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  domain={[0, 100]}
+                  tickFormatter={(value) => `${value}°C`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px',
+                    color: '#f1f5f9'
+                  }}
+                  formatter={(value, name) => {
+                    const labels = { girisSicaklik: 'Giriş', cikisSicaklik: 'Çıkış', deltaT: 'ΔT' };
+                    return [`${value.toFixed(1)}°C`, labels[name]];
+                  }}
+                />
+                <Line type="monotone" dataKey="girisSicaklik" stroke="#EF4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="cikisSicaklik" stroke="#3B82F6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="deltaT" stroke="#8B5CF6" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={temperatureData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-              <XAxis dataKey="time" tick={{ fontSize: 12, fill: '#94a3b8' }} />
-              <YAxis
-                tick={{ fontSize: 12, fill: '#94a3b8' }}
-                domain={[0, 100]}
-                tickFormatter={(value) => `${value}°C`}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                  color: '#f1f5f9'
-                }}
-                formatter={(value, name) => {
-                  const labels = { girisSicaklik: 'Giriş', cikisSicaklik: 'Çıkış', deltaT: 'ΔT' };
-                  return [`${value.toFixed(1)}°C`, labels[name]];
-                }}
-              />
-              <Line type="monotone" dataKey="girisSicaklik" stroke="#EF4444" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="cikisSicaklik" stroke="#3B82F6" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="deltaT" stroke="#8B5CF6" strokeWidth={2} dot={false} strokeDasharray="5 5" />
-            </LineChart>
-          </ResponsiveContainer>
         </div>
-      </div>
+      )}
 
       {/* Energy Charts Row */}
       <div className="charts-row">
         {/* Monthly Energy Trend */}
-        <div className="chart-card">
-          <div className="chart-header">
-            <Flame size={20} />
-            <h3>Aylık Enerji Tüketimi</h3>
+        {energyTrend.length > 0 && (
+          <div className="chart-card">
+            <div className="chart-header">
+              <Flame size={20} />
+              <h3>Aylık Enerji Tüketimi</h3>
+            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={energyTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => (v/1000).toFixed(0) + 'k'} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px',
+                    color: '#f1f5f9'
+                  }}
+                  formatter={(value) => [formatEnergy(value * 1000), '']}
+                />
+                <Area type="monotone" dataKey="isitma" stackId="1" stroke="#EF4444" fill="rgba(239, 68, 68, 0.3)" name="Isıtma" />
+                <Area type="monotone" dataKey="sogutma" stackId="1" stroke="#3B82F6" fill="rgba(59, 130, 246, 0.3)" name="Soğutma" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={energyTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => (v/1000).toFixed(0) + 'k'} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                  color: '#f1f5f9'
-                }}
-                formatter={(value) => [formatEnergy(value * 1000), '']}
-              />
-              <Area type="monotone" dataKey="isitma" stackId="1" stroke="#EF4444" fill="rgba(239, 68, 68, 0.3)" name="Isıtma" />
-              <Area type="monotone" dataKey="sogutma" stackId="1" stroke="#3B82F6" fill="rgba(59, 130, 246, 0.3)" name="Soğutma" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        )}
 
         {/* City Distribution */}
-        <div className="chart-card">
-          <div className="chart-header">
-            <Building2 size={20} />
-            <h3>İl Bazlı Isı Sayacı Dağılımı</h3>
+        {cityData.length > 0 && (
+          <div className="chart-card">
+            <div className="chart-header">
+              <Building2 size={20} />
+              <h3>İl Bazlı Isı Sayacı Dağılımı</h3>
+            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={cityData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
+                <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <YAxis dataKey="city" type="category" tick={{ fontSize: 11, fill: '#94a3b8' }} width={70} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px',
+                    color: '#f1f5f9'
+                  }}
+                />
+                <Bar dataKey="sayacSayisi" fill="#EF4444" radius={[0, 4, 4, 0]} name="Sayaç Sayısı" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={cityData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-              <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis dataKey="city" type="category" tick={{ fontSize: 11, fill: '#94a3b8' }} width={70} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                  color: '#f1f5f9'
-                }}
-              />
-              <Bar dataKey="sayacSayisi" fill="#EF4444" radius={[0, 4, 4, 0]} name="Sayaç Sayısı" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        )}
       </div>
 
       {/* Real-time Heat Status */}
@@ -376,9 +373,9 @@ function Dashboard() {
               <ThermometerSun size={24} className="text-red" />
               <span>Gidiş Hattı (T1)</span>
             </div>
-            <div className="status-value text-red">{(stats?.ortalamaGirisSicaklik || 72.5).toFixed(1)}°C</div>
+            <div className="status-value text-red">{(stats?.ortalamaGirisSicaklik || 0).toFixed(1)}°C</div>
             <div className="status-bar">
-              <div className="bar-fill red" style={{ width: `${(stats?.ortalamaGirisSicaklik || 72.5)}%` }}></div>
+              <div className="bar-fill red" style={{ width: `${Math.min((stats?.ortalamaGirisSicaklik || 0), 100)}%` }}></div>
             </div>
             <div className="status-range">
               <span>40°C</span>
@@ -392,9 +389,9 @@ function Dashboard() {
               <ThermometerSnowflake size={24} className="text-blue" />
               <span>Dönüş Hattı (T2)</span>
             </div>
-            <div className="status-value text-blue">{(stats?.ortalamaCikisSicaklik || 48.3).toFixed(1)}°C</div>
+            <div className="status-value text-blue">{(stats?.ortalamaCikisSicaklik || 0).toFixed(1)}°C</div>
             <div className="status-bar">
-              <div className="bar-fill blue" style={{ width: `${(stats?.ortalamaCikisSicaklik || 48.3)}%` }}></div>
+              <div className="bar-fill blue" style={{ width: `${Math.min((stats?.ortalamaCikisSicaklik || 0), 100)}%` }}></div>
             </div>
             <div className="status-range">
               <span>30°C</span>
@@ -408,9 +405,9 @@ function Dashboard() {
               <Droplets size={24} className="text-cyan" />
               <span>Anlık Debi</span>
             </div>
-            <div className="status-value text-cyan">{(stats?.toplamDebi || 845.6).toFixed(1)} L/h</div>
+            <div className="status-value text-cyan">{(stats?.toplamDebi || 0).toFixed(1)} L/h</div>
             <div className="status-bar">
-              <div className="bar-fill cyan" style={{ width: '65%' }}></div>
+              <div className="bar-fill cyan" style={{ width: `${Math.min(((stats?.toplamDebi || 0) / 1500) * 100, 100)}%` }}></div>
             </div>
             <div className="status-range">
               <span>0</span>
@@ -424,9 +421,9 @@ function Dashboard() {
               <Zap size={24} className="text-yellow" />
               <span>Anlık Güç</span>
             </div>
-            <div className="status-value text-yellow">{((stats?.toplamDebi || 845.6) * (stats?.ortalamaDeltaT || 24.2) * 1.163 / 1000).toFixed(1)} kW</div>
+            <div className="status-value text-yellow">{((stats?.toplamDebi || 0) * (stats?.ortalamaDeltaT || 0) * 1.163 / 1000).toFixed(1)} kW</div>
             <div className="status-bar">
-              <div className="bar-fill yellow" style={{ width: '48%' }}></div>
+              <div className="bar-fill yellow" style={{ width: `${Math.min((((stats?.toplamDebi || 0) * (stats?.ortalamaDeltaT || 0) * 1.163 / 1000) / 100) * 100, 100)}%` }}></div>
             </div>
             <div className="status-range">
               <span>0</span>

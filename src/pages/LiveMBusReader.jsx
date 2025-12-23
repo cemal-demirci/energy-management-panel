@@ -79,6 +79,14 @@ function LiveMBusReader() {
   const readIntervalRef = useRef(null);
   const pollIntervalRef = useRef(null);
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   // Gateway'leri API'den yükle
   useEffect(() => {
     fetchGateways();
@@ -99,16 +107,11 @@ function LiveMBusReader() {
     try {
       setLoading(true);
       const res = await fetch('/api/mbus/gateways');
-      const data = await res.json();
-      setDbGateways(data.gateways || []);
+      const data = await safeJson(res);
+      setDbGateways(data?.gateways || []);
     } catch (err) {
       addLog('error', 'Gateway listesi alınamadı: ' + err.message);
-      // Demo data fallback
-      setDbGateways([
-        { id: 1, name: 'Demo Gateway A1', imei: 'demo-gw-001', ip: '192.168.1.100', sayacSayisi: 24 },
-        { id: 2, name: 'Demo Gateway A2', imei: 'demo-gw-002', ip: '192.168.1.101', sayacSayisi: 18 },
-        { id: 3, name: 'Demo Gateway B1', imei: 'demo-gw-003', ip: '192.168.2.100', sayacSayisi: 32 }
-      ]);
+      setDbGateways([]);
     } finally {
       setLoading(false);
     }
@@ -118,8 +121,8 @@ function LiveMBusReader() {
   const fetchLiveGateways = async () => {
     try {
       const res = await fetch('/api/mbus/live/gateways');
-      const data = await res.json();
-      setLiveGateways(data.gateways || []);
+      const data = await safeJson(res);
+      setLiveGateways(data?.gateways || []);
     } catch (err) {
       // Sessiz hata - TCP sunucuya bağlı gateway yok olabilir
       setLiveGateways([]);
@@ -169,24 +172,8 @@ function LiveMBusReader() {
         setGatewayMeters(formattedMeters);
         addLog('success', `${formattedMeters.length} sayaç yüklendi`);
       } else {
-        // Demo sayaçlar
-        const demoMeters = Array.from({ length: gateway.sayacSayisi || 10 }, (_, i) => ({
-          id: `${gateway.id}-M${String(i + 1).padStart(3, '0')}`,
-          address: i + 1,
-          name: `Sayaç ${String(i + 1).padStart(3, '0')}`,
-          type: 'heat',
-          typeName: 'Isı',
-          unit: 'kWh',
-          location: `Kat ${Math.floor(i / 4) + 1}, Daire ${(i % 4) + 1}`,
-          lastValue: Math.floor(Math.random() * 5000) + 1000,
-          inletTemp: 65 + Math.random() * 10,
-          outletTemp: 40 + Math.random() * 10,
-          volume: Math.random() * 50,
-          lastRead: null,
-          status: 'active'
-        }));
-        setGatewayMeters(demoMeters);
-        addLog('info', `Demo mod: ${demoMeters.length} sayaç oluşturuldu`);
+        setGatewayMeters([]);
+        addLog('warning', 'Bu gateway için kayıtlı sayaç bulunamadı');
       }
     } catch (err) {
       addLog('error', 'Sayaç listesi alınamadı: ' + err.message);
@@ -200,7 +187,7 @@ function LiveMBusReader() {
 
   const handleGatewaySelect = async (gateway) => {
     if (gateway.status === 'offline') {
-      addLog('warning', `Gateway ${gateway.name} çevrimdışı - Demo modda çalışacak`);
+      addLog('warning', `Gateway ${gateway.name} çevrimdışı`);
     }
     setSelectedGateway(gateway);
     setSelectedMeters([]);
@@ -221,13 +208,8 @@ function LiveMBusReader() {
       setSignalStrength(selectedGateway.signal);
       addLog('success', `Gateway ${selectedGateway.name}'e TCP bağlantısı aktif`);
     } else {
-      // Demo mod - simüle bağlantı
-      setTimeout(() => {
-        setIsConnected(true);
-        setSignalStrength(75);
-        addLog('warning', 'Demo mod aktif - Gateway TCP bağlantısı yok');
-        addLog('info', `${gatewayMeters.length} sayaç tespit edildi (demo)`);
-      }, 1000);
+      // TCP bağlantısı yok - hata göster
+      addLog('error', 'Gateway TCP bağlantısı yok. Gateway\'in sunucuya bağlı olduğundan emin olun.');
     }
   };
 
@@ -264,38 +246,34 @@ function LiveMBusReader() {
       return;
     }
 
+    if (!selectedGateway?.tcpConnected) {
+      addLog('error', 'Gateway TCP bağlantısı gerekli');
+      return;
+    }
+
     setIsReading(true);
     addLog('info', `${selectedMeters.length} sayaç için okuma başlatıldı`);
     addLog('info', `Okuma aralığı: ${readInterval} saniye`);
 
-    if (selectedGateway?.tcpConnected) {
-      // Gerçek M-Bus okuma oturumu başlat
-      try {
-        const res = await fetch('/api/mbus/live/start-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imei: selectedGateway.imei,
-            meterAddresses: selectedMeters.map(m => m.address),
-            interval: readInterval * 1000
-          })
-        });
-        const data = await res.json();
-        setSessionId(data.sessionId);
-        addLog('success', `Canlı okuma oturumu başlatıldı: ${data.sessionId}`);
+    try {
+      const res = await fetch('/api/mbus/live/start-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imei: selectedGateway.imei,
+          meterAddresses: selectedMeters.map(m => m.address),
+          interval: readInterval * 1000
+        })
+      });
+      const data = await res.json();
+      setSessionId(data.sessionId);
+      addLog('success', `Canlı okuma oturumu başlatıldı: ${data.sessionId}`);
 
-        // Polling başlat
-        pollIntervalRef.current = setInterval(pollLiveData, 2000);
-      } catch (err) {
-        addLog('error', 'Oturum başlatılamadı: ' + err.message);
-        // Demo moduna geç
-        performDemoReading();
-        readIntervalRef.current = setInterval(performDemoReading, readInterval * 1000);
-      }
-    } else {
-      // Demo mod okuma
-      performDemoReading();
-      readIntervalRef.current = setInterval(performDemoReading, readInterval * 1000);
+      // Polling başlat
+      pollIntervalRef.current = setInterval(pollLiveData, 2000);
+    } catch (err) {
+      addLog('error', 'Oturum başlatılamadı: ' + err.message);
+      setIsReading(false);
     }
   };
 
@@ -373,65 +351,6 @@ function LiveMBusReader() {
     );
   };
 
-  // Demo okuma (TCP bağlantısı yoksa)
-  const performDemoReading = () => {
-    const timestamp = new Date();
-    const timeStr = timestamp.toLocaleTimeString('tr-TR');
-
-    selectedMeters.forEach((meter, index) => {
-      setTimeout(() => {
-        const girisSicaklik = 68 + Math.random() * 12;
-        const cikisSicaklik = 42 + Math.random() * 12;
-        const deltaT = girisSicaklik - cikisSicaklik;
-        const debi = 80 + Math.random() * 150;
-        const guc = (debi * deltaT * 1.163) / 1000;
-
-        const newValue = meter.lastValue + Math.floor(Math.random() * 5);
-
-        addLog('data', `[${meter.address}] ${meter.name}: ${newValue} kWh | T1: ${girisSicaklik.toFixed(1)}°C | T2: ${cikisSicaklik.toFixed(1)}°C | ΔT: ${deltaT.toFixed(1)}°C`);
-
-        setLiveData(prev => {
-          const existing = prev.find(d => d.meterId === meter.id);
-          const newReading = {
-            time: timeStr,
-            value: newValue,
-            inletTemp: girisSicaklik,
-            outletTemp: cikisSicaklik,
-            deltaT: deltaT,
-            flow: debi,
-            power: guc
-          };
-
-          if (existing) {
-            return prev.map(d =>
-              d.meterId === meter.id
-                ? { ...d, readings: [...d.readings.slice(-20), newReading], currentValue: newValue }
-                : d
-            );
-          }
-
-          return [...prev, {
-            meterId: meter.id,
-            meterName: meter.name,
-            meterType: meter.type,
-            unit: meter.unit,
-            address: meter.address,
-            readings: [newReading],
-            currentValue: newValue
-          }];
-        });
-
-        setGatewayMeters(prev =>
-          prev.map(m =>
-            m.id === meter.id
-              ? { ...m, lastValue: newValue, lastRead: timestamp, inletTemp: girisSicaklik, outletTemp: cikisSicaklik }
-              : m
-          )
-        );
-      }, index * 200);
-    });
-  };
-
   const handleStopReading = async () => {
     setIsReading(false);
 
@@ -466,34 +385,33 @@ function LiveMBusReader() {
       return;
     }
 
+    if (!selectedGateway?.tcpConnected) {
+      addLog('error', 'Gateway TCP bağlantısı gerekli');
+      return;
+    }
+
     addLog('info', 'Manuel okuma yapılıyor...');
 
-    if (selectedGateway?.tcpConnected) {
-      // Gerçek M-Bus okuma
-      for (const meter of selectedMeters) {
-        try {
-          const res = await fetch('/api/mbus/live/read-meter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              imei: selectedGateway.imei,
-              primaryAddress: meter.address
-            })
-          });
-          const data = await res.json();
+    for (const meter of selectedMeters) {
+      try {
+        const res = await fetch('/api/mbus/live/read-meter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imei: selectedGateway.imei,
+            primaryAddress: meter.address
+          })
+        });
+        const data = await res.json();
 
-          if (data.success) {
-            processReading(meter, data.reading);
-          } else {
-            addLog('error', `[${meter.address}] Okuma başarısız`);
-          }
-        } catch (err) {
-          addLog('error', `[${meter.address}] Hata: ${err.message}`);
+        if (data.success) {
+          processReading(meter, data.reading);
+        } else {
+          addLog('error', `[${meter.address}] Okuma başarısız`);
         }
+      } catch (err) {
+        addLog('error', `[${meter.address}] Hata: ${err.message}`);
       }
-    } else {
-      // Demo okuma
-      performDemoReading();
     }
   };
 
@@ -838,12 +756,6 @@ function LiveMBusReader() {
               </div>
             )}
 
-            {!selectedGateway?.tcpConnected && isConnected && (
-              <div className="demo-badge">
-                <AlertCircle size={16} />
-                Demo Mod
-              </div>
-            )}
           </div>
 
           {/* Canlı Veri Kartları */}

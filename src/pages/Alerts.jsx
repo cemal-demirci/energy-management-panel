@@ -5,6 +5,14 @@ function Alerts() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchAnomalies();
   }, []);
@@ -13,10 +21,11 @@ function Alerts() {
     try {
       setLoading(true);
       const res = await fetch('/api/analytics/anomalies');
-      const data = await res.json();
-      setAnomalies(data);
+      const data = await safeJson(res);
+      setAnomalies(data || []);
     } catch (err) {
       console.error('Anomalies error:', err);
+      setAnomalies([]);
     } finally {
       setLoading(false);
     }

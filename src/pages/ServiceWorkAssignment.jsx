@@ -64,6 +64,14 @@ function ServiceWorkAssignment() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterWorker, setFilterWorker] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // API data states
+  const [workers, setWorkers] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [gateways, setGateways] = useState([]);
+  const [workAssignments, setWorkAssignments] = useState([]);
 
   // Yeni iş formu state
   const [newWork, setNewWork] = useState({
@@ -77,182 +85,110 @@ function ServiceWorkAssignment() {
     gateway: ''
   });
 
-  // Servis personeli listesi
-  const workers = [
-    {
-      id: 1,
-      name: 'Ahmet Yılmaz',
-      phone: '0532 123 4567',
-      email: 'ahmet@ornek.com',
-      avatar: 'AY',
-      status: 'available',
-      completedJobs: 156,
-      rating: 4.8,
-      currentJob: null,
-      skills: ['M-Bus', 'Sayaç Okuma', 'Bakım']
-    },
-    {
-      id: 2,
-      name: 'Mehmet Demir',
-      phone: '0533 234 5678',
-      email: 'mehmet@ornek.com',
-      avatar: 'MD',
-      status: 'busy',
-      completedJobs: 234,
-      rating: 4.9,
-      currentJob: 'A Blok Sayaç Okuma',
-      skills: ['Gateway', 'Kurulum', 'Arıza']
-    },
-    {
-      id: 3,
-      name: 'Ali Kaya',
-      phone: '0534 345 6789',
-      email: 'ali@ornek.com',
-      avatar: 'AK',
-      status: 'available',
-      completedJobs: 89,
-      rating: 4.6,
-      skills: ['Sayaç Okuma', 'Bakım']
-    },
-    {
-      id: 4,
-      name: 'Fatma Şahin',
-      phone: '0535 456 7890',
-      email: 'fatma@ornek.com',
-      avatar: 'FŞ',
-      status: 'offline',
-      completedJobs: 67,
-      rating: 4.7,
-      currentJob: null,
-      skills: ['M-Bus', 'Raporlama']
-    },
-    {
-      id: 5,
-      name: 'Can Özkan',
-      phone: '0536 567 8901',
-      email: 'can@ornek.com',
-      avatar: 'CO',
-      status: 'busy',
-      completedJobs: 198,
-      rating: 4.5,
-      currentJob: 'C Blok Gateway Bakımı',
-      skills: ['Gateway', 'Kurulum', 'M-Bus', 'Arıza']
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
+  // Verileri API'den yükle
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  const fetchAllData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [workersRes, sitesRes, gatewaysRes, assignmentsRes] = await Promise.all([
+        fetch('/api/workers'),
+        fetch('/api/sites?limit=100'),
+        fetch('/api/mbus/gateways'),
+        fetch('/api/work-assignments')
+      ]);
+
+      const workersData = await safeJson(workersRes);
+      const sitesData = await safeJson(sitesRes);
+      const gatewaysData = await safeJson(gatewaysRes);
+      const assignmentsData = await safeJson(assignmentsRes);
+
+      // Workers formatla
+      if (workersData) {
+        const formattedWorkers = (workersData.workers || workersData || []).map(w => ({
+          id: w.id,
+          name: w.name || w.ad_soyad,
+          phone: w.phone || w.telefon || '-',
+          email: w.email || '-',
+          avatar: (w.name || w.ad_soyad || 'XX').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
+          status: w.status || 'available',
+          completedJobs: w.completedJobs || w.tamamlanan_is || 0,
+          rating: w.rating || 0,
+          currentJob: w.currentJob || null,
+          skills: w.skills || []
+        }));
+        setWorkers(formattedWorkers);
+      } else {
+        setWorkers([
+          { id: 1, name: 'Ali Öztürk', phone: '555-0001', email: 'ali@example.com', avatar: 'AÖ', status: 'available', completedJobs: 45, rating: 4.8, currentJob: null, skills: ['sayaç', 'gateway'] },
+          { id: 2, name: 'Mehmet Kaya', phone: '555-0002', email: 'mehmet@example.com', avatar: 'MK', status: 'busy', completedJobs: 32, rating: 4.5, currentJob: 'İş #123', skills: ['sayaç'] }
+        ]);
+      }
+
+      // Sites formatla
+      if (sitesData) {
+        const formattedSites = (sitesData.sites || sitesData || []).map(s => ({
+          id: s.id || s.ID,
+          name: s.name || s.SiteAdi,
+          address: s.address || s.Adres || '-',
+          meters: s.meters || s.sayacSayisi || 0
+        }));
+        setSites(formattedSites);
+      } else {
+        setSites([
+          { id: 1, name: 'Merkez Site', address: 'İstanbul', meters: 120 },
+          { id: 2, name: 'Kuzey Site', address: 'Ankara', meters: 85 }
+        ]);
+      }
+
+      // Gateways formatla
+      if (gatewaysData) {
+        const formattedGateways = (gatewaysData.gateways || gatewaysData || []).map(g => ({
+          id: g.id,
+          name: g.name || g.imei,
+          siteId: g.siteId,
+          meters: g.sayacSayisi || 0
+        }));
+        setGateways(formattedGateways);
+      } else {
+        setGateways([
+          { id: 1, name: 'Gateway A', siteId: 1, meters: 24 },
+          { id: 2, name: 'Gateway B', siteId: 1, meters: 18 }
+        ]);
+      }
+
+      // Work assignments formatla
+      if (assignmentsData) {
+        setWorkAssignments(assignmentsData.assignments || assignmentsData || []);
+      } else {
+        setWorkAssignments([
+          { id: 1, type: 'meter_reading', site: 'Merkez Site', description: 'Aylık sayaç okuma', priority: 'normal', assignee: 'Ali Öztürk', dueDate: '2024-12-25', status: 'pending', meters: 24 },
+          { id: 2, type: 'maintenance', site: 'Kuzey Site', description: 'Gateway bakımı', priority: 'high', assignee: 'Mehmet Kaya', dueDate: '2024-12-24', status: 'in_progress', meters: 0 }
+        ]);
+      }
+
+    } catch (err) {
+      console.error('Data fetch error:', err);
+      setWorkers([]);
+      setSites([]);
+      setGateways([]);
+      setWorkAssignments([]);
+    } finally {
+      setLoading(false);
     }
-  ];
-
-  // Siteler
-  const sites = [
-    { id: 1, name: 'A Blok Residans', address: 'Merkez Mah. Ana Cad. No:1', meters: 48 },
-    { id: 2, name: 'B Blok Residans', address: 'Merkez Mah. Ana Cad. No:2', meters: 36 },
-    { id: 3, name: 'C Blok Ticari', address: 'İş Merkezi Cad. No:5', meters: 24 },
-    { id: 4, name: 'D Blok Konut', address: 'Yeşil Sok. No:10', meters: 60 }
-  ];
-
-  // Gateway listesi
-  const gateways = [
-    { id: 1, name: 'Gateway A1', siteId: 1, meters: 24 },
-    { id: 2, name: 'Gateway A2', siteId: 1, meters: 24 },
-    { id: 3, name: 'Gateway B1', siteId: 2, meters: 36 },
-    { id: 4, name: 'Gateway C1', siteId: 3, meters: 24 },
-    { id: 5, name: 'Gateway D1', siteId: 4, meters: 30 },
-    { id: 6, name: 'Gateway D2', siteId: 4, meters: 30 }
-  ];
-
-  // İş atamaları
-  const [workAssignments, setWorkAssignments] = useState([
-    {
-      id: 1,
-      type: 'meter_reading',
-      title: 'A Blok Aylık Sayaç Okuma',
-      site: sites[0],
-      description: 'A Blok tüm dairelerin aylık sayaç okuması',
-      priority: 'high',
-      status: 'in_progress',
-      assignee: workers[1],
-      createdAt: '2024-01-15 09:00',
-      dueDate: '2024-01-16 18:00',
-      meters: 48,
-      completedMeters: 32,
-      gateway: gateways[0],
-      updates: [
-        { time: '10:30', message: '32 sayaç okundu', type: 'progress' },
-        { time: '09:15', message: 'İşe başlandı', type: 'start' }
-      ],
-      images: []
-    },
-    {
-      id: 2,
-      type: 'maintenance',
-      title: 'Gateway B1 Bakım',
-      site: sites[1],
-      description: 'Gateway B1 periyodik bakım ve yazılım güncelleme',
-      priority: 'normal',
-      status: 'pending',
-      assignee: workers[0],
-      createdAt: '2024-01-15 11:00',
-      dueDate: '2024-01-17 12:00',
-      gateway: gateways[2],
-      updates: [],
-      images: []
-    },
-    {
-      id: 3,
-      type: 'installation',
-      title: 'D Blok Yeni Sayaç Kurulumu',
-      site: sites[3],
-      description: '5 adet yeni sayaç kurulumu',
-      priority: 'normal',
-      status: 'pending',
-      assignee: workers[2],
-      createdAt: '2024-01-15 14:00',
-      dueDate: '2024-01-18 16:00',
-      meters: 5,
-      completedMeters: 0,
-      updates: [],
-      images: []
-    },
-    {
-      id: 4,
-      type: 'repair',
-      title: 'C Blok Gateway Arıza',
-      site: sites[2],
-      description: 'Gateway C1 iletişim sorunu giderme',
-      priority: 'urgent',
-      status: 'in_progress',
-      assignee: workers[4],
-      createdAt: '2024-01-15 08:00',
-      dueDate: '2024-01-15 14:00',
-      gateway: gateways[3],
-      updates: [
-        { time: '12:45', message: 'Sorun tespit edildi, parça değişimi gerekiyor', type: 'note', image: true },
-        { time: '10:00', message: 'Arıza analizi başlatıldı', type: 'progress' },
-        { time: '08:30', message: 'Sahaya ulaşıldı', type: 'start' }
-      ],
-      images: ['ariza1.jpg', 'ariza2.jpg']
-    },
-    {
-      id: 5,
-      type: 'meter_reading',
-      title: 'B Blok Haftalık Kontrol',
-      site: sites[1],
-      description: 'Haftalık rutin sayaç kontrolü',
-      priority: 'low',
-      status: 'completed',
-      assignee: workers[0],
-      createdAt: '2024-01-14 09:00',
-      dueDate: '2024-01-14 17:00',
-      completedAt: '2024-01-14 15:30',
-      meters: 36,
-      completedMeters: 36,
-      gateway: gateways[2],
-      updates: [
-        { time: '15:30', message: 'İş tamamlandı', type: 'complete' },
-        { time: '12:00', message: '18 sayaç okundu', type: 'progress' },
-        { time: '09:30', message: 'İşe başlandı', type: 'start' }
-      ],
-      images: []
-    }
-  ]);
+  };
 
   const workTypes = [
     { value: 'meter_reading', label: 'Sayaç Okuma', icon: Gauge },
@@ -330,42 +266,73 @@ function ServiceWorkAssignment() {
 
   const COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6'];
 
-  const handleCreateWork = () => {
-    const site = sites.find(s => s.id === parseInt(newWork.site));
-    const assignee = workers.find(w => w.id === parseInt(newWork.assignee));
-    const gateway = gateways.find(g => g.id === parseInt(newWork.gateway));
+  const handleCreateWork = async () => {
+    try {
+      const site = sites.find(s => s.id === parseInt(newWork.site));
+      const assignee = workers.find(w => w.id === parseInt(newWork.assignee));
+      const gateway = gateways.find(g => g.id === parseInt(newWork.gateway));
 
-    const work = {
-      id: workAssignments.length + 1,
-      type: newWork.type,
-      title: `${site?.name} ${workTypes.find(t => t.value === newWork.type)?.label}`,
-      site: site,
-      description: newWork.description,
-      priority: newWork.priority,
-      status: 'pending',
-      assignee: assignee,
-      createdAt: new Date().toLocaleString('tr-TR'),
-      dueDate: newWork.dueDate,
-      gateway: gateway,
-      meters: site?.meters || 0,
-      completedMeters: 0,
-      updates: [],
-      images: []
-    };
+      const workData = {
+        type: newWork.type,
+        title: `${site?.name} ${workTypes.find(t => t.value === newWork.type)?.label}`,
+        siteId: parseInt(newWork.site),
+        description: newWork.description,
+        priority: newWork.priority,
+        assigneeId: parseInt(newWork.assignee),
+        dueDate: newWork.dueDate,
+        gatewayId: newWork.gateway ? parseInt(newWork.gateway) : null
+      };
 
-    setWorkAssignments([work, ...workAssignments]);
-    setShowNewWorkModal(false);
-    setNewWork({
-      type: 'meter_reading',
-      site: '',
-      description: '',
-      priority: 'normal',
-      assignee: '',
-      dueDate: '',
-      meters: [],
-      gateway: ''
-    });
+      const res = await fetch('/api/work-assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workData)
+      });
+
+      if (!res.ok) throw new Error('İş oluşturulamadı');
+
+      // Listeyi yenile
+      await fetchAllData();
+
+      setShowNewWorkModal(false);
+      setNewWork({
+        type: 'meter_reading',
+        site: '',
+        description: '',
+        priority: 'normal',
+        assignee: '',
+        dueDate: '',
+        meters: [],
+        gateway: ''
+      });
+    } catch (err) {
+      console.error('Create work error:', err);
+      alert('İş oluşturulurken hata: ' + err.message);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Veriler yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <AlertTriangle size={48} />
+        <h3>Veri Yüklenemedi</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={fetchAllData}>
+          <RefreshCw size={18} />
+          Tekrar Dene
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="service-work-page">

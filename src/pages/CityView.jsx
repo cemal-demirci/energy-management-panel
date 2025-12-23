@@ -7,6 +7,14 @@ function CityView() {
   const [selectedCity, setSelectedCity] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   useEffect(() => {
     fetchCities();
   }, []);
@@ -15,10 +23,11 @@ function CityView() {
     try {
       setLoading(true);
       const res = await fetch('/api/cities');
-      const data = await res.json();
-      setCities(data);
+      const data = await safeJson(res);
+      setCities(data || []);
     } catch (err) {
       console.error('Cities error:', err);
+      setCities([]);
     } finally {
       setLoading(false);
     }
@@ -27,10 +36,11 @@ function CityView() {
   const fetchDistricts = async (city) => {
     try {
       const res = await fetch(`/api/cities/${encodeURIComponent(city)}/districts`);
-      const data = await res.json();
-      setDistricts(data);
+      const data = await safeJson(res);
+      setDistricts(data || []);
     } catch (err) {
       console.error('Districts error:', err);
+      setDistricts([]);
     }
   };
 

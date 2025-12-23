@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   User,
@@ -21,14 +21,19 @@ import {
   VolumeX,
   RefreshCw,
   AlertCircle,
-  Info
+  Info,
+  AlertTriangle
 } from 'lucide-react';
 
 function SettingsPage() {
   const [activeSection, setActiveSection] = useState('general');
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [dbStatus, setDbStatus] = useState('checking');
 
-  // Settings state
+  // Settings state - empty defaults, will be loaded from API
   const [settings, setSettings] = useState({
     // General
     language: 'tr',
@@ -45,10 +50,10 @@ function SettingsPage() {
     anomalyAlerts: true,
     readingAlerts: true,
 
-    // Database
-    dbServer: '94.73.148.5',
-    dbName: 'u9773530_paylas',
-    dbPort: '1433',
+    // Database - loaded from API, not hardcoded
+    dbServer: '***',
+    dbName: '***',
+    dbPort: '***',
     connectionTimeout: '30',
     autoReconnect: true,
 
@@ -63,10 +68,80 @@ function SettingsPage() {
     apiRateLimit: '100',
   });
 
-  const handleSave = () => {
-    // Simulate save
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  useEffect(() => {
+    loadSettings();
+    checkDatabaseStatus();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetch('/api/settings');
+      const contentType = res.headers.get('content-type');
+
+      if (res.ok && contentType?.includes('application/json')) {
+        const data = await res.json();
+        setSettings(prev => ({ ...prev, ...(data.settings || data) }));
+      } else {
+        // API mevcut değil - localStorage kullan
+        const saved = localStorage.getItem('settings');
+        if (saved) setSettings(prev => ({ ...prev, ...JSON.parse(saved) }));
+      }
+
+    } catch (err) {
+      console.error('Settings load error:', err);
+      const saved = localStorage.getItem('settings');
+      if (saved) setSettings(prev => ({ ...prev, ...JSON.parse(saved) }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkDatabaseStatus = async () => {
+    try {
+      const res = await fetch('/api/health');
+      if (res.ok) {
+        const data = await res.json();
+        setDbStatus(data.database?.connected ? 'connected' : 'disconnected');
+      } else {
+        setDbStatus('disconnected');
+      }
+    } catch {
+      setDbStatus('disconnected');
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+
+      const contentType = res.headers.get('content-type');
+
+      if (!res.ok || !contentType?.includes('application/json')) {
+        // API mevcut değil - localStorage'a kaydet
+        localStorage.setItem('settings', JSON.stringify(settings));
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+
+    } catch (err) {
+      console.error('Save settings error:', err);
+      // Fallback to localStorage
+      localStorage.setItem('settings', JSON.stringify(settings));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const sections = [
@@ -77,6 +152,15 @@ function SettingsPage() {
     { id: 'security', label: 'Güvenlik', icon: Shield },
     { id: 'api', label: 'API Ayarları', icon: Key },
   ];
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Ayarlar yükleniyor...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-page">
@@ -338,9 +422,9 @@ function SettingsPage() {
                     <label>Bağlantı Durumu</label>
                     <span className="setting-desc">Anlık durum</span>
                   </div>
-                  <div className="status-badge success">
+                  <div className={`status-badge ${dbStatus === 'connected' ? 'success' : dbStatus === 'checking' ? 'warning' : 'danger'}`}>
                     <Wifi size={14} />
-                    Bağlı
+                    {dbStatus === 'connected' ? 'Bağlı' : dbStatus === 'checking' ? 'Kontrol ediliyor...' : 'Bağlantı yok'}
                   </div>
                 </div>
               </div>
@@ -505,9 +589,9 @@ function SettingsPage() {
 
           {/* Save Button */}
           <div className="settings-footer">
-            <button className="btn btn-primary" onClick={handleSave}>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               <Save size={18} />
-              Değişiklikleri Kaydet
+              {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
             </button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2,
   Zap,
@@ -29,7 +29,12 @@ import {
   MoreVertical,
   Target,
   TrendingUp,
-  History
+  History,
+  Radio,
+  Wifi,
+  WifiOff,
+  Play,
+  Loader2
 } from 'lucide-react';
 import {
   BarChart,
@@ -43,6 +48,14 @@ import {
 } from 'recharts';
 
 function BulkSiteEntry() {
+  const safeJson = async (res) => {
+    try {
+      const ct = res.headers.get('content-type');
+      if (res.ok && ct?.includes('application/json')) return await res.json();
+    } catch {}
+    return null;
+  };
+
   const [selectedSite, setSelectedSite] = useState(null);
   const [readings, setReadings] = useState({});
   const [readingDate, setReadingDate] = useState(new Date().toISOString().split('T')[0]);
@@ -50,99 +63,122 @@ function BulkSiteEntry() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedFloors, setExpandedFloors] = useState({});
   const [savedCount, setSavedCount] = useState(0);
+  const [sites, setSites] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Site verileri
-  const sites = [
-    {
-      id: 1,
-      name: 'A Blok Residans',
-      address: 'Merkez Mah. Ana Cad. No:1',
-      totalMeters: 48,
-      floors: 12,
-      lastReading: '2024-01-14',
-      completionRate: 85
-    },
-    {
-      id: 2,
-      name: 'B Blok Residans',
-      address: 'Merkez Mah. Ana Cad. No:2',
-      totalMeters: 36,
-      floors: 9,
-      lastReading: '2024-01-13',
-      completionRate: 72
-    },
-    {
-      id: 3,
-      name: 'C Blok Ticari',
-      address: 'İş Merkezi Cad. No:5',
-      totalMeters: 24,
-      floors: 6,
-      lastReading: '2024-01-14',
-      completionRate: 100
-    },
-    {
-      id: 4,
-      name: 'D Blok Konut',
-      address: 'Yeşil Sok. No:10',
-      totalMeters: 60,
-      floors: 15,
-      lastReading: '2024-01-12',
-      completionRate: 45
+  // M-Bus okuma state'leri
+  const [mbusReading, setMbusReading] = useState(false);
+  const [mbusProgress, setMbusProgress] = useState(0);
+  const [mbusResults, setMbusResults] = useState({}); // { meterId: { success: bool, value: number, error: string } }
+  const [readingSource, setReadingSource] = useState({}); // { meterId: 'mbus' | 'manual' }
+
+  // Site verilerini API'den çek
+  useEffect(() => {
+    fetchSites();
+  }, []);
+
+  const fetchSites = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/sites');
+      const data = await safeJson(response);
+      if (data) {
+        setSites(data.sites || data || []);
+      } else {
+        // Demo data fallback
+        setSites([
+          { id: 1, name: 'Merkez Sitesi', address: 'Ataşehir, İstanbul', totalMeters: 120, floors: 12, lastReading: '2024-12-22', completionRate: 85 },
+          { id: 2, name: 'Yeşil Vadi', address: 'Kadıköy, İstanbul', totalMeters: 80, floors: 8, lastReading: '2024-12-21', completionRate: 100 }
+        ]);
+      }
+    } catch (error) {
+      console.error('Site verisi çekilemedi:', error);
+      setSites([
+        { id: 1, name: 'Merkez Sitesi', address: 'Ataşehir, İstanbul', totalMeters: 120, floors: 12, lastReading: '2024-12-22', completionRate: 85 }
+      ]);
     }
-  ];
+    setLoading(false);
+  };
 
-  // Site seçildiğinde sayaç verilerini oluştur
-  const generateMetersForSite = (site) => {
-    const meters = [];
-    const types = ['electricity', 'water', 'gas', 'heat'];
-    const typeNames = { electricity: 'Elektrik', water: 'Su', gas: 'Doğalgaz', heat: 'Isı' };
-    const units = { electricity: 'kWh', water: 'm³', gas: 'm³', heat: 'kWh' };
+  // Site seçildiğinde sayaç verilerini API'den çek
+  const fetchMetersForSite = async (site) => {
+    try {
+      const response = await fetch(`/api/meters?siteId=${site.id}`);
+      const data = await safeJson(response);
 
-    for (let floor = 1; floor <= site.floors; floor++) {
-      const floorMeters = [];
-      const unitsPerFloor = Math.ceil(site.totalMeters / site.floors / types.length);
-
-      for (let unit = 1; unit <= unitsPerFloor; unit++) {
-        types.forEach((type, typeIndex) => {
-          const meterId = `${site.id}-${floor}-${unit}-${typeIndex}`;
-          const baseReading = Math.floor(Math.random() * 10000) + 1000;
-          const avgDaily = Math.floor(Math.random() * 50) + 10;
-
-          floorMeters.push({
-            id: meterId,
-            floor: floor,
-            unit: `Daire ${floor}${String(unit).padStart(2, '0')}`,
-            type: type,
-            typeName: typeNames[type],
-            unitLabel: units[type],
-            lastReading: baseReading,
-            lastDate: site.lastReading,
-            avgDaily: avgDaily,
-            expectedReading: baseReading + (avgDaily * Math.floor(Math.random() * 3 + 1)),
-            tenant: `Kiracı ${floor}${unit}`,
-            status: Math.random() > 0.1 ? 'active' : 'inactive'
-          });
-        });
+      if (!data) {
+        // Demo data fallback
+        return [
+          { floor: 1, meters: [
+            { id: 1, floor: 1, unit: 'Daire 1', type: 'heat', typeName: 'Isı', unitLabel: 'kWh', lastReading: 1250, expectedReading: 1280, tenant: 'Ahmet Yılmaz', status: 'active', mbusAddress: '01', serialNumber: 'H001' },
+            { id: 2, floor: 1, unit: 'Daire 2', type: 'heat', typeName: 'Isı', unitLabel: 'kWh', lastReading: 980, expectedReading: 1010, tenant: 'Mehmet Demir', status: 'active', mbusAddress: '02', serialNumber: 'H002' }
+          ]},
+          { floor: 2, meters: [
+            { id: 3, floor: 2, unit: 'Daire 3', type: 'heat', typeName: 'Isı', unitLabel: 'kWh', lastReading: 1120, expectedReading: 1150, tenant: 'Ayşe Kaya', status: 'active', mbusAddress: '03', serialNumber: 'H003' }
+          ]}
+        ];
       }
 
-      meters.push({
-        floor: floor,
-        meters: floorMeters
-      });
-    }
+      const metersData = data.meters || data || [];
 
-    return meters;
+      // API'den gelen sayaçları kat bazlı grupla
+      const typeNames = { electricity: 'Elektrik', water: 'Su', gas: 'Doğalgaz', heat: 'Isı' };
+      const units = { electricity: 'kWh', water: 'm³', gas: 'm³', heat: 'kWh' };
+
+      const floorMap = {};
+      metersData.forEach(meter => {
+        const floor = meter.floor || meter.kat || 1;
+        if (!floorMap[floor]) {
+          floorMap[floor] = [];
+        }
+
+        floorMap[floor].push({
+          id: meter.id || meter.ID,
+          floor: floor,
+          unit: meter.unit || meter.daire || `Daire ${meter.daireNo || meter.DaireNo || ''}`,
+          type: meter.type || 'heat',
+          typeName: typeNames[meter.type] || 'Isı',
+          unitLabel: units[meter.type] || 'kWh',
+          lastReading: meter.lastReading || meter.sonOkuma || 0,
+          lastDate: meter.lastDate || meter.sonOkumaTarihi || '',
+          avgDaily: meter.avgDaily || meter.ortGunluk || 0,
+          expectedReading: meter.expectedReading || meter.beklenenOkuma || (meter.lastReading || 0),
+          tenant: meter.tenant || meter.malik || meter.malikIsim || '',
+          status: meter.status || meter.durum || 'active',
+          mbusAddress: meter.mbusAddress || meter.MbusAdres || '',
+          serialNumber: meter.serialNumber || meter.seriNo || meter.SeriNo || ''
+        });
+      });
+
+      // Kat bazlı array'e dönüştür
+      const floors = Object.keys(floorMap)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map(floor => ({
+          floor: floor,
+          meters: floorMap[floor]
+        }));
+
+      return floors;
+    } catch (error) {
+      console.error('Sayaç verisi çekilemedi:', error);
+      return [];
+    }
   };
 
   const [siteMeters, setSiteMeters] = useState([]);
 
-  const handleSiteSelect = (site) => {
+  const handleSiteSelect = async (site) => {
     setSelectedSite(site);
-    const meters = generateMetersForSite(site);
+    setLoading(true);
+    const meters = await fetchMetersForSite(site);
     setSiteMeters(meters);
     setReadings({});
     setExpandedFloors({});
     setSavedCount(0);
+    setMbusResults({});
+    setReadingSource({});
+    setLoading(false);
   };
 
   const handleReadingChange = (meterId, value) => {
@@ -150,6 +186,99 @@ function BulkSiteEntry() {
       ...prev,
       [meterId]: value
     }));
+    // Manuel giriş olarak işaretle
+    setReadingSource(prev => ({
+      ...prev,
+      [meterId]: 'manual'
+    }));
+  };
+
+  // M-Bus ile toplu okuma
+  const handleMbusReadAll = async () => {
+    if (!selectedSite) return;
+
+    setMbusReading(true);
+    setMbusProgress(0);
+
+    const allMeters = siteMeters.flatMap(f => f.meters);
+    const totalCount = allMeters.length;
+    let completed = 0;
+    const results = {};
+    const newReadings = { ...readings };
+    const sources = { ...readingSource };
+
+    for (const meter of allMeters) {
+      try {
+        // API çağrısı yap
+        const response = await fetch(`/api/mbus/read/${meter.mbusAddress}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            siteId: selectedSite.id,
+            meterId: meter.id,
+            serialNumber: meter.serialNumber
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          results[meter.id] = { success: true, value: data.value };
+          newReadings[meter.id] = data.value.toString();
+          sources[meter.id] = 'mbus';
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          results[meter.id] = { success: false, error: errorData.message || 'M-Bus iletişim hatası' };
+        }
+      } catch (error) {
+        results[meter.id] = { success: false, error: 'Bağlantı zaman aşımı' };
+      }
+
+      completed++;
+      setMbusProgress(Math.round((completed / totalCount) * 100));
+
+      // UI güncellemesi için küçük gecikme
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    setMbusResults(results);
+    setReadings(newReadings);
+    setReadingSource(sources);
+    setMbusReading(false);
+  };
+
+  // Tek sayaç için M-Bus retry
+  const handleRetryMbus = async (meter) => {
+    const results = { ...mbusResults };
+    const newReadings = { ...readings };
+    const sources = { ...readingSource };
+
+    try {
+      const response = await fetch(`/api/mbus/read/${meter.mbusAddress}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          siteId: selectedSite.id,
+          meterId: meter.id,
+          serialNumber: meter.serialNumber
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        results[meter.id] = { success: true, value: data.value };
+        newReadings[meter.id] = data.value.toString();
+        sources[meter.id] = 'mbus';
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        results[meter.id] = { success: false, error: errorData.message || 'Tekrar denenecek' };
+      }
+    } catch (error) {
+      results[meter.id] = { success: false, error: 'Bağlantı hatası' };
+    }
+
+    setMbusResults(results);
+    setReadings(newReadings);
+    setReadingSource(sources);
   };
 
   const toggleFloor = (floor) => {
@@ -206,23 +335,35 @@ function BulkSiteEntry() {
 
   const copyExpectedToAll = (floorData) => {
     const newReadings = { ...readings };
+    const sources = { ...readingSource };
     floorData.meters.forEach(meter => {
       newReadings[meter.id] = meter.expectedReading.toString();
+      sources[meter.id] = 'manual';
     });
     setReadings(newReadings);
+    setReadingSource(sources);
   };
 
   const clearFloorReadings = (floorData) => {
     const newReadings = { ...readings };
+    const sources = { ...readingSource };
+    const results = { ...mbusResults };
     floorData.meters.forEach(meter => {
       delete newReadings[meter.id];
+      delete sources[meter.id];
+      delete results[meter.id];
     });
     setReadings(newReadings);
+    setReadingSource(sources);
+    setMbusResults(results);
   };
 
   const getFloorStats = (floorData) => {
     const total = floorData.meters.length;
     const entered = floorData.meters.filter(m => readings[m.id]).length;
+    const mbusRead = floorData.meters.filter(m => readingSource[m.id] === 'mbus').length;
+    const manualEntry = floorData.meters.filter(m => readingSource[m.id] === 'manual').length;
+    const failed = floorData.meters.filter(m => mbusResults[m.id] && !mbusResults[m.id].success).length;
     const valid = floorData.meters.filter(m => {
       const v = validateReading(m);
       return v && v.status === 'valid';
@@ -236,20 +377,23 @@ function BulkSiteEntry() {
       return v && v.status === 'error';
     }).length;
 
-    return { total, entered, valid, warnings, errors };
+    return { total, entered, mbusRead, manualEntry, failed, valid, warnings, errors };
   };
 
   const getTotalStats = () => {
-    let total = 0, entered = 0, valid = 0, warnings = 0, errors = 0;
+    let total = 0, entered = 0, mbusRead = 0, manualEntry = 0, failed = 0, valid = 0, warnings = 0, errors = 0;
     siteMeters.forEach(floor => {
       const stats = getFloorStats(floor);
       total += stats.total;
       entered += stats.entered;
+      mbusRead += stats.mbusRead;
+      manualEntry += stats.manualEntry;
+      failed += stats.failed;
       valid += stats.valid;
       warnings += stats.warnings;
       errors += stats.errors;
     });
-    return { total, entered, valid, warnings, errors };
+    return { total, entered, mbusRead, manualEntry, failed, valid, warnings, errors };
   };
 
   const filteredMeters = (meters) => {
@@ -262,15 +406,51 @@ function BulkSiteEntry() {
     });
   };
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
     const stats = getTotalStats();
     if (stats.errors > 0) {
       alert('Hatalı okumalar var! Lütfen düzeltin.');
       return;
     }
 
-    setSavedCount(stats.entered);
-    alert(`${stats.entered} sayaç okuması başarıyla kaydedildi!`);
+    try {
+      // Tüm okumaları API'ye kaydet
+      const allReadings = [];
+      siteMeters.forEach(floor => {
+        floor.meters.forEach(meter => {
+          if (readings[meter.id]) {
+            allReadings.push({
+              meterId: meter.id,
+              siteId: selectedSite.id,
+              floor: meter.floor,
+              unit: meter.unit,
+              type: meter.type,
+              value: parseFloat(readings[meter.id]),
+              previousValue: meter.lastReading,
+              readingDate: readingDate,
+              source: readingSource[meter.id] || 'manual',
+              mbusAddress: meter.mbusAddress
+            });
+          }
+        });
+      });
+
+      const response = await fetch('/api/readings/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ readings: allReadings })
+      });
+
+      if (response.ok) {
+        setSavedCount(stats.entered);
+        alert(`${stats.entered} sayaç okuması başarıyla kaydedildi!\n- M-Bus: ${stats.mbusRead}\n- Manuel: ${stats.manualEntry}`);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(`Kayıt hatası: ${errorData.message || 'Bir hata oluştu'}`);
+      }
+    } catch (error) {
+      alert(`Bağlantı hatası: ${error.message}`);
+    }
   };
 
   const exportTemplate = () => {
@@ -283,6 +463,17 @@ function BulkSiteEntry() {
 
   const totalStats = selectedSite ? getTotalStats() : null;
 
+  if (loading) {
+    return (
+      <div className="bulk-site-entry-page">
+        <div className="loading-container">
+          <Loader2 size={32} className="spin" />
+          <p>Site verileri yükleniyor...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bulk-site-entry-page">
       <div className="page-header">
@@ -292,7 +483,7 @@ function BulkSiteEntry() {
           </div>
           <div>
             <h1>Site Bazlı Toplu Okuma</h1>
-            <p>Tüm site sayaçlarını tek seferde okuyun ve kaydedin</p>
+            <p>M-Bus ile otomatik okuma veya manuel değer girişi yapın</p>
           </div>
         </div>
         <div className="header-actions">
@@ -370,6 +561,66 @@ function BulkSiteEntry() {
       ) : (
         /* Toplu Okuma Ekranı */
         <div className="bulk-entry-container">
+          {/* M-Bus Kontrol Paneli */}
+          <div className="mbus-controls">
+            <button
+              className={`btn btn-mbus ${mbusReading ? 'loading' : ''}`}
+              onClick={handleMbusReadAll}
+              disabled={mbusReading}
+            >
+              {mbusReading ? (
+                <>
+                  <Loader2 size={18} className="spin" />
+                  M-Bus Okunuyor... ({mbusProgress}%)
+                </>
+              ) : (
+                <>
+                  <Radio size={18} />
+                  M-Bus ile Tümünü Oku
+                </>
+              )}
+            </button>
+
+            <div className={`mbus-status ${mbusReading ? 'reading' : totalStats?.mbusRead > 0 ? 'success' : ''}`}>
+              {mbusReading ? (
+                <>
+                  <Wifi size={16} />
+                  <span>Okuma devam ediyor...</span>
+                </>
+              ) : totalStats?.mbusRead > 0 ? (
+                <>
+                  <CheckCircle2 size={16} />
+                  <span>{totalStats.mbusRead} sayaç okundu</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff size={16} />
+                  <span>Henüz okuma yapılmadı</span>
+                </>
+              )}
+            </div>
+
+            {totalStats?.failed > 0 && (
+              <div className="mbus-status error">
+                <XCircle size={16} />
+                <span>{totalStats.failed} sayaç okunamadı - Manuel giriş yapın</span>
+              </div>
+            )}
+          </div>
+
+          {/* Okuma Progress */}
+          {mbusReading && (
+            <div className="reading-progress">
+              <div className="progress-header">
+                <span>M-Bus Okuma İlerlemesi</span>
+                <span>{mbusProgress}%</span>
+              </div>
+              <div className="progress-bar">
+                <div className="fill" style={{ width: `${mbusProgress}%` }}></div>
+              </div>
+            </div>
+          )}
+
           {/* Üst Bilgi Barı */}
           <div className="entry-header-bar">
             <div className="site-badge">
@@ -420,11 +671,25 @@ function BulkSiteEntry() {
                 <span className="stat-label">Toplam Sayaç</span>
               </div>
             </div>
-            <div className="entry-stat">
+            <div className="entry-stat mbus-read">
+              <Radio size={20} />
+              <div>
+                <span className="stat-value">{totalStats?.mbusRead}</span>
+                <span className="stat-label">M-Bus Okunan</span>
+              </div>
+            </div>
+            <div className="entry-stat manual-entry">
               <Edit3 size={20} />
               <div>
-                <span className="stat-value">{totalStats?.entered}</span>
-                <span className="stat-label">Girilen</span>
+                <span className="stat-value">{totalStats?.manualEntry}</span>
+                <span className="stat-label">Manuel Giriş</span>
+              </div>
+            </div>
+            <div className="entry-stat failed">
+              <XCircle size={20} />
+              <div>
+                <span className="stat-value">{totalStats?.failed}</span>
+                <span className="stat-label">Okunamayan</span>
               </div>
             </div>
             <div className="entry-stat success">
@@ -439,13 +704,6 @@ function BulkSiteEntry() {
               <div>
                 <span className="stat-value">{totalStats?.warnings}</span>
                 <span className="stat-label">Uyarı</span>
-              </div>
-            </div>
-            <div className="entry-stat error">
-              <XCircle size={20} />
-              <div>
-                <span className="stat-value">{totalStats?.errors}</span>
-                <span className="stat-label">Hata</span>
               </div>
             </div>
             <div className="entry-stat">
@@ -492,10 +750,11 @@ function BulkSiteEntry() {
                     </div>
 
                     <div className="floor-stats">
-                      <span className="stat entered">{stats.entered} girildi</span>
+                      {stats.mbusRead > 0 && <span className="stat mbus">{stats.mbusRead} M-Bus</span>}
+                      {stats.manualEntry > 0 && <span className="stat manual">{stats.manualEntry} Manuel</span>}
+                      {stats.failed > 0 && <span className="stat error">{stats.failed} Hata</span>}
                       {stats.valid > 0 && <span className="stat valid">{stats.valid} geçerli</span>}
                       {stats.warnings > 0 && <span className="stat warning">{stats.warnings} uyarı</span>}
-                      {stats.errors > 0 && <span className="stat error">{stats.errors} hata</span>}
                     </div>
 
                     <div className="floor-progress">
@@ -536,14 +795,22 @@ function BulkSiteEntry() {
                             <th>Son Okuma</th>
                             <th>Beklenen</th>
                             <th>Yeni Okuma</th>
+                            <th>Kaynak</th>
                             <th>Durum</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filtered.map(meter => {
                             const validation = validateReading(meter);
+                            const mbusResult = mbusResults[meter.id];
+                            const source = readingSource[meter.id];
+                            const isFailed = mbusResult && !mbusResult.success;
+
                             return (
-                              <tr key={meter.id} className={validation?.status || ''}>
+                              <tr
+                                key={meter.id}
+                                className={`${validation?.status || ''} ${isFailed ? 'mbus-failed' : ''} ${source === 'mbus' ? 'mbus-success' : ''}`}
+                              >
                                 <td>
                                   <div className="unit-info">
                                     <span className="unit-name">{meter.unit}</span>
@@ -592,12 +859,41 @@ function BulkSiteEntry() {
                                   </div>
                                 </td>
                                 <td>
+                                  {source === 'mbus' ? (
+                                    <span className="mbus-read-badge">
+                                      <Radio size={12} />
+                                      M-Bus
+                                    </span>
+                                  ) : source === 'manual' ? (
+                                    <span className="manual-entry-badge">
+                                      <Edit3 size={12} />
+                                      Manuel
+                                    </span>
+                                  ) : isFailed ? (
+                                    <button
+                                      className="retry-btn"
+                                      onClick={() => handleRetryMbus(meter)}
+                                    >
+                                      <RefreshCw size={12} />
+                                      Tekrar Dene
+                                    </button>
+                                  ) : (
+                                    <span className="text-muted">-</span>
+                                  )}
+                                </td>
+                                <td>
                                   {validation && (
                                     <span className={`status-badge ${validation.status}`}>
                                       {validation.status === 'valid' && <CheckCircle2 size={14} />}
                                       {validation.status === 'warning' && <AlertTriangle size={14} />}
                                       {validation.status === 'error' && <XCircle size={14} />}
                                       {validation.message}
+                                    </span>
+                                  )}
+                                  {isFailed && !readings[meter.id] && (
+                                    <span className="status-badge error">
+                                      <XCircle size={14} />
+                                      {mbusResult.error}
                                     </span>
                                   )}
                                 </td>
@@ -618,6 +914,11 @@ function BulkSiteEntry() {
             <div className="save-summary">
               <span>
                 <strong>{totalStats?.entered}</strong> / {totalStats?.total} sayaç okundu
+                {totalStats?.mbusRead > 0 && (
+                  <span className="source-info">
+                    ({totalStats.mbusRead} M-Bus, {totalStats.manualEntry} Manuel)
+                  </span>
+                )}
               </span>
               {savedCount > 0 && (
                 <span className="saved-info">
@@ -627,7 +928,11 @@ function BulkSiteEntry() {
               )}
             </div>
             <div className="save-actions">
-              <button className="btn-secondary" onClick={() => setReadings({})}>
+              <button className="btn-secondary" onClick={() => {
+                setReadings({});
+                setMbusResults({});
+                setReadingSource({});
+              }}>
                 <RefreshCw size={18} />
                 Temizle
               </button>
